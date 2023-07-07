@@ -1,9 +1,9 @@
 # commit to be tagged for the new release
 commit = "HEAD"
 
-project_name = ""
-github_repo = "/"
-match_deps = "^github.com/(/[a-zA-Z0-9-]+)$"
+project_name = "kube-service-exposer"
+github_repo = "siderolabs/kube-service-exposer"
+match_deps = "^github.com/(siderolabs/[a-zA-Z0-9-]+)$"
 
 # previous = -
 # pre_release = true
