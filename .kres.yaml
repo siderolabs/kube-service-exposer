@@ -1,4 +1,11 @@
 ---
+kind: common.Image
+name: image-kube-service-exposer
+spec:
+  pushLatest: false
+  droneExtraEnvironment:
+    PLATFORM: linux/amd64,linux/arm64
+---
 kind: golang.Build
 spec:
   outputs:
@@ -8,7 +15,3 @@ spec:
     linux-arm64:
       GOOS: linux
       GOARCH: arm64
-    linux-armv7:
-      GOOS: linux
-      GOARCH: arm
-      GOARM: 7

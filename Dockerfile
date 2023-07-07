@@ -2,7 +2,7 @@
 
 # THIS FILE WAS AUTOMATICALLY GENERATED, PLEASE DO NOT EDIT.
 #
-# Generated on 2023-07-04T16:48:30Z by kres latest.
+# Generated on 2023-07-07T11:40:16Z by kres latest.
 
 ARG TOOLCHAIN
 
@@ -81,17 +81,6 @@ ARG SHA
 ARG TAG
 RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg GOARCH=arm64 GOOS=linux go build ${GO_BUILDFLAGS} -ldflags "${GO_LDFLAGS} -X ${VERSION_PKG}.Name=kube-service-exposer -X ${VERSION_PKG}.SHA=${SHA} -X ${VERSION_PKG}.Tag=${TAG}" -o /kube-service-exposer-linux-arm64
 
-# builds kube-service-exposer-linux-armv7
-FROM base AS kube-service-exposer-linux-armv7-build
-COPY --from=generate / /
-WORKDIR /src/cmd/kube-service-exposer
-ARG GO_BUILDFLAGS
-ARG GO_LDFLAGS
-ARG VERSION_PKG="github.com/siderolabs/kube-service-exposer/internal/version"
-ARG SHA
-ARG TAG
-RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg GOARCH=arm GOARM=7 GOOS=linux go build ${GO_BUILDFLAGS} -ldflags "${GO_LDFLAGS} -X ${VERSION_PKG}.Name=kube-service-exposer -X ${VERSION_PKG}.SHA=${SHA} -X ${VERSION_PKG}.Tag=${TAG}" -o /kube-service-exposer-linux-armv7
-
 # runs gofumpt
 FROM base AS lint-gofumpt
 RUN FILES="$(gofumpt -l .)" && test -z "${FILES}" || (echo -e "Source code is not formatted with 'gofumpt -w .':\n${FILES}"; exit 1)
@@ -130,9 +119,6 @@ COPY --from=kube-service-exposer-linux-amd64-build /kube-service-exposer-linux-a
 FROM scratch AS kube-service-exposer-linux-arm64
 COPY --from=kube-service-exposer-linux-arm64-build /kube-service-exposer-linux-arm64 /kube-service-exposer-linux-arm64
 
-FROM scratch AS kube-service-exposer-linux-armv7
-COPY --from=kube-service-exposer-linux-armv7-build /kube-service-exposer-linux-armv7 /kube-service-exposer-linux-armv7
-
 FROM scratch AS unit-tests
 COPY --from=unit-tests-run /src/coverage.txt /coverage-unit-tests.txt
 
@@ -141,7 +127,6 @@ FROM kube-service-exposer-linux-${TARGETARCH} AS kube-service-exposer
 FROM scratch AS kube-service-exposer-all
 COPY --from=kube-service-exposer-linux-amd64 / /
 COPY --from=kube-service-exposer-linux-arm64 / /
-COPY --from=kube-service-exposer-linux-armv7 / /
 
 FROM scratch AS image-kube-service-exposer
 ARG TARGETARCH

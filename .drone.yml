@@ -1,7 +1,7 @@
 ---
 # THIS FILE WAS AUTOMATICALLY GENERATED, PLEASE DO NOT EDIT.
 #
-# Generated on 2023-07-03T16:11:24Z by kres latest.
+# Generated on 2023-07-07T11:40:16Z by kres latest.
 
 kind: pipeline
 type: kubernetes
@@ -169,6 +169,7 @@ steps:
       from_secret: ghcr_token
     GHCR_USERNAME:
       from_secret: ghcr_username
+    PLATFORM: linux/amd64,linux/arm64
     PUSH: true
   volumes:
   - name: outer-docker-socket
@@ -185,36 +186,6 @@ steps:
       - pull_request
   depends_on:
   - image-kube-service-exposer
-
-- name: push-kube-service-exposer-latest
-  pull: always
-  image: autonomy/build-container:latest
-  commands:
-  - docker login ghcr.io --username "$${GHCR_USERNAME}" --password "$${GHCR_PASSWORD}"
-  - make image-kube-service-exposer TAG=latest
-  environment:
-    GHCR_PASSWORD:
-      from_secret: ghcr_token
-    GHCR_USERNAME:
-      from_secret: ghcr_username
-    PUSH: true
-  volumes:
-  - name: outer-docker-socket
-    path: /var/outer-run
-  - name: docker-socket
-    path: /var/run
-  - name: buildx
-    path: /root/.docker/buildx
-  - name: ssh
-    path: /root/.ssh
-  when:
-    branch:
-    - main
-    event:
-      exclude:
-      - pull_request
-  depends_on:
-  - push-kube-service-exposer
 
 - name: release-notes
   pull: always

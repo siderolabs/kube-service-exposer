@@ -1,11 +1,12 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED, PLEASE DO NOT EDIT.
 #
-# Generated on 2023-07-04T16:48:30Z by kres latest.
+# Generated on 2023-07-07T11:40:16Z by kres latest.
 
 # common variables
 
 SHA := $(shell git describe --match=none --always --abbrev=8 --dirty)
 TAG := $(shell git describe --tag --always --dirty)
+ABBREV_TAG := $(shell git describe --tags >/dev/null 2>/dev/null && git describe --tag --always --match v[0-9]\* --abbrev=0 || echo 'undefined')
 BRANCH := $(shell git rev-parse --abbrev-ref HEAD)
 ARTIFACTS := _out
 WITH_DEBUG ?= false
@@ -18,10 +19,10 @@ GRPC_GO_VERSION ?= 1.3.0
 GRPC_GATEWAY_VERSION ?= 2.16.0
 VTPROTOBUF_VERSION ?= 0.4.0
 DEEPCOPY_VERSION ?= v0.5.5
-GOLANGCILINT_VERSION ?= v1.53.2
+GOLANGCILINT_VERSION ?= v1.53.3
 GOFUMPT_VERSION ?= v0.5.0
 GO_VERSION ?= 1.20
-GOIMPORTS_VERSION ?= v0.9.3
+GOIMPORTS_VERSION ?= v0.11.0
 GO_BUILDFLAGS ?=
 GO_LDFLAGS ?=
 CGO_ENABLED ?= 0
@@ -43,6 +44,7 @@ COMMON_ARGS += --push=$(PUSH)
 COMMON_ARGS += --build-arg=ARTIFACTS="$(ARTIFACTS)"
 COMMON_ARGS += --build-arg=SHA="$(SHA)"
 COMMON_ARGS += --build-arg=TAG="$(TAG)"
+COMMON_ARGS += --build-arg=ABBREV_TAG="$(ABBREV_TAG)"
 COMMON_ARGS += --build-arg=USERNAME="$(USERNAME)"
 COMMON_ARGS += --build-arg=REGISTRY="$(REGISTRY)"
 COMMON_ARGS += --build-arg=TOOLCHAIN="$(TOOLCHAIN)"
@@ -166,15 +168,8 @@ $(ARTIFACTS)/kube-service-exposer-linux-arm64:
 .PHONY: kube-service-exposer-linux-arm64
 kube-service-exposer-linux-arm64: $(ARTIFACTS)/kube-service-exposer-linux-arm64  ## Builds executable for kube-service-exposer-linux-arm64.
 
-.PHONY: $(ARTIFACTS)/kube-service-exposer-linux-armv7
-$(ARTIFACTS)/kube-service-exposer-linux-armv7:
-	@$(MAKE) local-kube-service-exposer-linux-armv7 DEST=$(ARTIFACTS)
-
-.PHONY: kube-service-exposer-linux-armv7
-kube-service-exposer-linux-armv7: $(ARTIFACTS)/kube-service-exposer-linux-armv7  ## Builds executable for kube-service-exposer-linux-armv7.
-
 .PHONY: kube-service-exposer
-kube-service-exposer: kube-service-exposer-linux-amd64 kube-service-exposer-linux-arm64 kube-service-exposer-linux-armv7  ## Builds executables for kube-service-exposer.
+kube-service-exposer: kube-service-exposer-linux-amd64 kube-service-exposer-linux-arm64  ## Builds executables for kube-service-exposer.
 
 .PHONY: lint-markdown
 lint-markdown:  ## Runs markdownlint.
