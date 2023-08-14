@@ -1,22 +1,22 @@
-# syntax = docker/dockerfile-upstream:1.5.2-labs
+# syntax = docker/dockerfile-upstream:1.6.0-labs
 
 # THIS FILE WAS AUTOMATICALLY GENERATED, PLEASE DO NOT EDIT.
 #
-# Generated on 2023-07-07T11:40:16Z by kres latest.
+# Generated on 2023-08-14T14:40:33Z by kres latest.
 
 ARG TOOLCHAIN
 
 # cleaned up specs and compiled versions
 FROM scratch AS generate
 
-FROM ghcr.io/siderolabs/ca-certificates:v1.4.1 AS image-ca-certificates
+FROM ghcr.io/siderolabs/ca-certificates:v1.5.0 AS image-ca-certificates
 
-FROM ghcr.io/siderolabs/fhs:v1.4.1 AS image-fhs
+FROM ghcr.io/siderolabs/fhs:v1.5.0 AS image-fhs
 
 # runs markdownlint
-FROM docker.io/node:20.3.0-alpine3.18 AS lint-markdown
+FROM docker.io/node:20.5.0-alpine3.18 AS lint-markdown
 WORKDIR /src
-RUN npm i -g markdownlint-cli@0.34.0
+RUN npm i -g markdownlint-cli@0.35.0
 RUN npm i sentences-per-line@0.2.1
 COPY .markdownlint.json .
 COPY ./README.md ./README.md
@@ -31,6 +31,10 @@ FROM --platform=${BUILDPLATFORM} toolchain AS tools
 ENV GO111MODULE on
 ARG CGO_ENABLED
 ENV CGO_ENABLED ${CGO_ENABLED}
+ARG GOTOOLCHAIN
+ENV GOTOOLCHAIN ${GOTOOLCHAIN}
+ARG GOEXPERIMENT
+ENV GOEXPERIMENT ${GOEXPERIMENT}
 ENV GOPATH /go
 ARG DEEPCOPY_VERSION
 RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg go install github.com/siderolabs/deep-copy@${DEEPCOPY_VERSION} \

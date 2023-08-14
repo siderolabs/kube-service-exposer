@@ -144,7 +144,7 @@ func TestTracker(t *testing.T) {
 	mockClock.Add(2 * time.Second)
 
 	// handling expected
-	err = retry.Constant(3 * time.Second).Retry(func() error {
+	err = retry.Constant(3*time.Second, retry.WithUnits(50*time.Millisecond)).Retry(func() error {
 		length := len(serviceHandler.Handles())
 		if length < 2 {
 			return retry.ExpectedError(fmt.Errorf("not enough handles: %d", length))
