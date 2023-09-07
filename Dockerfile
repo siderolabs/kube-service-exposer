@@ -2,19 +2,16 @@
 
 # THIS FILE WAS AUTOMATICALLY GENERATED, PLEASE DO NOT EDIT.
 #
-# Generated on 2023-08-14T14:40:33Z by kres latest.
+# Generated on 2023-09-08T12:13:02Z by kres latest.
 
 ARG TOOLCHAIN
 
-# cleaned up specs and compiled versions
-FROM scratch AS generate
+FROM ghcr.io/siderolabs/ca-certificates:v1.6.0-alpha.0-10-gd3d7d29 AS image-ca-certificates
 
-FROM ghcr.io/siderolabs/ca-certificates:v1.5.0 AS image-ca-certificates
-
-FROM ghcr.io/siderolabs/fhs:v1.5.0 AS image-fhs
+FROM ghcr.io/siderolabs/fhs:v1.6.0-alpha.0-10-gd3d7d29 AS image-fhs
 
 # runs markdownlint
-FROM docker.io/node:20.5.0-alpine3.18 AS lint-markdown
+FROM docker.io/node:20.5.1-alpine3.18 AS lint-markdown
 WORKDIR /src
 RUN npm i -g markdownlint-cli@0.35.0
 RUN npm i sentences-per-line@0.2.1
@@ -63,27 +60,13 @@ COPY ./cmd ./cmd
 COPY ./internal ./internal
 RUN --mount=type=cache,target=/go/pkg go list -mod=readonly all >/dev/null
 
-# builds kube-service-exposer-linux-amd64
-FROM base AS kube-service-exposer-linux-amd64-build
-COPY --from=generate / /
-WORKDIR /src/cmd/kube-service-exposer
-ARG GO_BUILDFLAGS
-ARG GO_LDFLAGS
-ARG VERSION_PKG="github.com/siderolabs/kube-service-exposer/internal/version"
+FROM tools AS embed-generate
 ARG SHA
 ARG TAG
-RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg GOARCH=amd64 GOOS=linux go build ${GO_BUILDFLAGS} -ldflags "${GO_LDFLAGS} -X ${VERSION_PKG}.Name=kube-service-exposer -X ${VERSION_PKG}.SHA=${SHA} -X ${VERSION_PKG}.Tag=${TAG}" -o /kube-service-exposer-linux-amd64
-
-# builds kube-service-exposer-linux-arm64
-FROM base AS kube-service-exposer-linux-arm64-build
-COPY --from=generate / /
-WORKDIR /src/cmd/kube-service-exposer
-ARG GO_BUILDFLAGS
-ARG GO_LDFLAGS
-ARG VERSION_PKG="github.com/siderolabs/kube-service-exposer/internal/version"
-ARG SHA
-ARG TAG
-RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg GOARCH=arm64 GOOS=linux go build ${GO_BUILDFLAGS} -ldflags "${GO_LDFLAGS} -X ${VERSION_PKG}.Name=kube-service-exposer -X ${VERSION_PKG}.SHA=${SHA} -X ${VERSION_PKG}.Tag=${TAG}" -o /kube-service-exposer-linux-arm64
+WORKDIR /src
+RUN mkdir -p internal/version/data && \
+    echo -n ${SHA} > internal/version/data/sha && \
+    echo -n ${TAG} > internal/version/data/tag
 
 # runs gofumpt
 FROM base AS lint-gofumpt
@@ -117,14 +100,48 @@ WORKDIR /src
 ARG TESTPKGS
 RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg --mount=type=cache,target=/tmp go test -v -covermode=atomic -coverprofile=coverage.txt -coverpkg=${TESTPKGS} -count 1 ${TESTPKGS}
 
+FROM embed-generate AS embed-abbrev-generate
+WORKDIR /src
+ARG ABBREV_TAG
+RUN echo -n 'undefined' > internal/version/data/sha && \
+    echo -n ${ABBREV_TAG} > internal/version/data/tag
+
+FROM scratch AS unit-tests
+COPY --from=unit-tests-run /src/coverage.txt /coverage-unit-tests.txt
+
+# cleaned up specs and compiled versions
+FROM scratch AS generate
+COPY --from=embed-abbrev-generate /src/internal/version internal/version
+
+# builds kube-service-exposer-linux-amd64
+FROM base AS kube-service-exposer-linux-amd64-build
+COPY --from=generate / /
+COPY --from=embed-generate / /
+WORKDIR /src/cmd/kube-service-exposer
+ARG GO_BUILDFLAGS
+ARG GO_LDFLAGS
+ARG VERSION_PKG="internal/version"
+ARG SHA
+ARG TAG
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg GOARCH=amd64 GOOS=linux go build ${GO_BUILDFLAGS} -ldflags "${GO_LDFLAGS} -X ${VERSION_PKG}.Name=kube-service-exposer -X ${VERSION_PKG}.SHA=${SHA} -X ${VERSION_PKG}.Tag=${TAG}" -o /kube-service-exposer-linux-amd64
+
+# builds kube-service-exposer-linux-arm64
+FROM base AS kube-service-exposer-linux-arm64-build
+COPY --from=generate / /
+COPY --from=embed-generate / /
+WORKDIR /src/cmd/kube-service-exposer
+ARG GO_BUILDFLAGS
+ARG GO_LDFLAGS
+ARG VERSION_PKG="internal/version"
+ARG SHA
+ARG TAG
+RUN --mount=type=cache,target=/root/.cache/go-build --mount=type=cache,target=/go/pkg GOARCH=arm64 GOOS=linux go build ${GO_BUILDFLAGS} -ldflags "${GO_LDFLAGS} -X ${VERSION_PKG}.Name=kube-service-exposer -X ${VERSION_PKG}.SHA=${SHA} -X ${VERSION_PKG}.Tag=${TAG}" -o /kube-service-exposer-linux-arm64
+
 FROM scratch AS kube-service-exposer-linux-amd64
 COPY --from=kube-service-exposer-linux-amd64-build /kube-service-exposer-linux-amd64 /kube-service-exposer-linux-amd64
 
 FROM scratch AS kube-service-exposer-linux-arm64
 COPY --from=kube-service-exposer-linux-arm64-build /kube-service-exposer-linux-arm64 /kube-service-exposer-linux-arm64
-
-FROM scratch AS unit-tests
-COPY --from=unit-tests-run /src/coverage.txt /coverage-unit-tests.txt
 
 FROM kube-service-exposer-linux-${TARGETARCH} AS kube-service-exposer
 
