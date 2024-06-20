@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/siderolabs/gen/slices"
+	"github.com/siderolabs/gen/xslices"
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/validation"
@@ -89,7 +89,7 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 		return fmt.Errorf("invalid host port %q: %w", hostPortStr, err)
 	}
 
-	svcTCPPorts := slices.Filter(svc.Spec.Ports, func(port corev1.ServicePort) bool {
+	svcTCPPorts := xslices.Filter(svc.Spec.Ports, func(port corev1.ServicePort) bool {
 		return port.Protocol == corev1.ProtocolTCP
 	})
 

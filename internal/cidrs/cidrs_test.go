@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/siderolabs/gen/maps"
-	"github.com/siderolabs/gen/slices"
+	"github.com/siderolabs/gen/xslices"
 	"github.com/stretchr/testify/assert"
 
 	"github.com/siderolabs/kube-service-exposer/internal/cidrs"
@@ -18,7 +18,7 @@ import (
 func TestFilterIPSet(t *testing.T) {
 	t.Parallel()
 
-	ipSet := slices.ToSet([]string{"127.0.0.1", "invalid1", "192.168.2.1", "172.20.0.42", "invalid2"})
+	ipSet := xslices.ToSet([]string{"127.0.0.1", "invalid1", "192.168.2.1", "172.20.0.42", "invalid2"})
 
 	filtered := cidrs.FilterIPSet([]netip.Prefix{}, ipSet, nil)
 	assert.Empty(t, filtered)

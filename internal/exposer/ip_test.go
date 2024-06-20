@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/siderolabs/gen/maps"
-	"github.com/siderolabs/gen/slices"
+	"github.com/siderolabs/gen/xslices"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap/zaptest"
 
@@ -21,7 +21,7 @@ type mockProvider struct {
 }
 
 func (m *mockProvider) Get() (map[string]struct{}, error) {
-	return slices.ToSet(m.ips), m.err
+	return xslices.ToSet(m.ips), m.err
 }
 
 func TestFilteringIPSetProviderCreate(t *testing.T) {

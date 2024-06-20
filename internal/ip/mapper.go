@@ -10,8 +10,10 @@ import (
 	"reflect"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/siderolabs/gen/maps"
+	"github.com/siderolabs/go-loadbalancer/upstream"
 	"go.uber.org/zap"
 )
 
@@ -124,6 +126,7 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 	for ip := range hostIPSet {
 		if err = lb.AddRoute(net.JoinHostPort(ip, strconv.Itoa(hostPort)),
 			[]string{net.JoinHostPort(svcName, strconv.Itoa(svcPort))},
+			upstream.WithHealthcheckTimeout(time.Second),
 		); err != nil {
 			return fmt.Errorf("failed to add route to loadbalancer: %w", err)
 		}

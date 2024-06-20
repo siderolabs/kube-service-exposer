@@ -34,7 +34,7 @@ var rootCmd = &cobra.Command{
 	Short:   "Expose kubernetes services on specific interfaces from the configured port",
 	Version: version.Tag,
 	Args:    cobra.NoArgs,
-	RunE: func(cmd *cobra.Command, args []string) error {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		var loggerConfig zap.Config
 
 		if debug.Enabled {

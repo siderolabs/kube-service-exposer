@@ -122,8 +122,6 @@ func (t *Tracker) handleChanges(ctx context.Context) error {
 	var errs error
 
 	for _, svc := range svcList.Items {
-		svc := svc
-
 		if err = t.serviceHandler.Handle(&svc); err != nil {
 			errs = multierror.Append(errs, fmt.Errorf("failed to handle Service %s/%s: %w", svc.Namespace, svc.Name, err))
 		}

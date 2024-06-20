@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/benbjohnson/clock"
-	"github.com/siderolabs/gen/slices"
+	"github.com/siderolabs/gen/xslices"
 	"github.com/siderolabs/go-retry/retry"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap/zaptest"
@@ -154,7 +154,7 @@ func TestTracker(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	assert.ElementsMatch(t, slices.Map(serviceHandler.Handles(), func(svc *corev1.Service) string {
+	assert.ElementsMatch(t, xslices.Map(serviceHandler.Handles(), func(svc *corev1.Service) string {
 		return svc.Name + "." + svc.Namespace
 	}), []string{"test1.testns1", "test2.testns2"})
 

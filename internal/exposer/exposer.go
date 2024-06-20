@@ -13,7 +13,7 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/pointer"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -85,7 +85,7 @@ func New(annotationKey string, bindCIDRs []string, logger *zap.Logger) (*Exposer
 	ctrller, err := controller.New(version.Name+"-controller", mgr,
 		controller.Options{
 			Reconciler:         rec,
-			NeedLeaderElection: pointer.Bool(false),
+			NeedLeaderElection: ptr.To(false),
 		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create controller: %w", err)
@@ -111,7 +111,7 @@ func (e *Exposer) Run(ctx context.Context) error {
 		e.logger.Info("bindCIDRs are empty, mappings will listen on all interfaces")
 	}
 
-	if err := e.controller.Watch(source.Kind(e.manager.GetCache(), &corev1.Service{}), &handler.EnqueueRequestForObject{}); err != nil {
+	if err := e.controller.Watch(source.Kind(e.manager.GetCache(), &corev1.Service{}, &handler.TypedEnqueueRequestForObject[*corev1.Service]{})); err != nil {
 		return fmt.Errorf("failed to watch Services: %w", err)
 	}
 

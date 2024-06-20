@@ -7,7 +7,7 @@ package ip_test
 import (
 	"testing"
 
-	"github.com/siderolabs/gen/slices"
+	"github.com/siderolabs/gen/xslices"
 	"github.com/siderolabs/go-loadbalancer/upstream"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
@@ -21,7 +21,7 @@ type mockIPSetProvider struct {
 }
 
 func (m *mockIPSetProvider) Get() (map[string]struct{}, error) {
-	return slices.ToSet(m.ips), nil
+	return xslices.ToSet(m.ips), nil
 }
 
 type mockLoadBalancer struct {
