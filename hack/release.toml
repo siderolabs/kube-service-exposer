@@ -5,7 +5,5 @@ project_name = "kube-service-exposer"
 github_repo = "siderolabs/kube-service-exposer"
 match_deps = "^github.com/(siderolabs/[a-zA-Z0-9-]+)$"
 
-# previous = -
-# pre_release = true
+previous = "v0.1.2"
 
-# [notes]
