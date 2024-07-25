@@ -3,7 +3,7 @@ kind: common.Image
 name: image-kube-service-exposer
 spec:
   pushLatest: false
-  droneExtraEnvironment:
+  extraEnvironment:
     PLATFORM: linux/amd64,linux/arm64
 ---
 kind: golang.Build

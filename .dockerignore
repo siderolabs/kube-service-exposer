@@ -1,6 +1,6 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED, PLEASE DO NOT EDIT.
 #
-# Generated on 2023-07-03T16:28:38Z by kres latest.
+# Generated on 2024-07-25T21:33:47Z by kres faf91e3.
 
 *
 !cmd
@@ -8,5 +8,6 @@
 !go.mod
 !go.sum
 !.golangci.yml
+!CHANGELOG.md
 !README.md
 !.markdownlint.json
