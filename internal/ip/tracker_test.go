@@ -15,6 +15,7 @@ import (
 	"github.com/siderolabs/gen/xslices"
 	"github.com/siderolabs/go-retry/retry"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
@@ -83,7 +84,7 @@ func TestTrackerCreate(t *testing.T) {
 	assert.ErrorContains(t, err, "serviceHandler must not be nil")
 
 	tracker, err := ip.NewTracker(&mockSetRefresher{}, &mockClientProvider{}, &mockServiceHandler{}, 30*time.Second, nil, logger)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, tracker)
 }
 
@@ -116,7 +117,7 @@ func TestTracker(t *testing.T) {
 	serviceHandler := &mockServiceHandler{}
 
 	tracker, err := ip.NewTracker(refresher, clientProvider, serviceHandler, 2*time.Second, mockClock, logger)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -152,7 +153,7 @@ func TestTracker(t *testing.T) {
 
 		return nil
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.ElementsMatch(t, xslices.Map(serviceHandler.Handles(), func(svc *corev1.Service) string {
 		return svc.Name + "." + svc.Namespace
@@ -167,7 +168,7 @@ func TestTracker(t *testing.T) {
 
 	cancel()
 
-	assert.NoError(t, eg.Wait())
+	require.NoError(t, eg.Wait())
 }
 
 func sleepWithContext(ctx context.Context, d time.Duration) {

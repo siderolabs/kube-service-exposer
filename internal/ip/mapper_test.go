@@ -10,6 +10,7 @@ import (
 	"github.com/siderolabs/gen/xslices"
 	"github.com/siderolabs/go-loadbalancer/upstream"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 
@@ -28,6 +29,10 @@ type mockLoadBalancer struct {
 	routes  map[string][]string
 	started bool
 	closed  bool
+}
+
+func (m *mockLoadBalancer) Wait() error {
+	return nil
 }
 
 func (m *mockLoadBalancer) AddRoute(ipPort string, upstreamAddrs []string, _ ...upstream.ListOption) error {
@@ -72,8 +77,8 @@ func TestMapperCreate(t *testing.T) {
 	_, err := ip.NewMapper(nil, nil, logger)
 	assert.ErrorContains(t, err, "must not be nil")
 
-	mapper, err := ip.NewMapper(&mockIPSetProvider{}, nil, logger)
-	assert.NoError(t, err)
+	mapper, err := ip.NewMapper(&mockIPSetProvider{}, &ip.TCPLoadBalancerProvider{}, logger)
+	require.NoError(t, err)
 
 	assert.NotNil(t, mapper)
 }
@@ -91,9 +96,9 @@ func TestMapper(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
 	mapper, err := ip.NewMapper(ipSetProvider, lbProvider, logger)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	assert.NoError(t, mapper.Add("svc1.ns1", 12345, 80))
+	require.NoError(t, mapper.Add("svc1.ns1", 12345, 80))
 
 	assert.Len(t, lbProvider.lbs, 1)
 	assert.Len(t, lbProvider.lbs[0].(*mockLoadBalancer).routes, 2)
@@ -102,14 +107,14 @@ func TestMapper(t *testing.T) {
 
 	assert.ErrorContains(t, mapper.Add("svc2.ns2", 12345, 80), "already registered to another service")
 
-	assert.NoError(t, mapper.Add("svc2.ns2", 12346, 8080))
+	require.NoError(t, mapper.Add("svc2.ns2", 12346, 8080))
 
 	assert.Len(t, lbProvider.lbs, 2)
 	assert.Len(t, lbProvider.lbs[1].(*mockLoadBalancer).routes, 2)
 	assert.Equal(t, []string{"svc2.ns2:8080"}, lbProvider.lbs[1].(*mockLoadBalancer).routes["192.168.2.42:12346"])
 	assert.Equal(t, []string{"svc2.ns2:8080"}, lbProvider.lbs[1].(*mockLoadBalancer).routes["172.20.0.42:12346"])
 
-	assert.NoError(t, mapper.Add("svc2.ns2", 12347, 8081))
+	require.NoError(t, mapper.Add("svc2.ns2", 12347, 8081))
 
 	assert.Len(t, lbProvider.lbs, 3)
 	assert.Len(t, lbProvider.lbs[2].(*mockLoadBalancer).routes, 2)

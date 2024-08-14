@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,17 +46,17 @@ func TestHandlerCreate(t *testing.T) {
 
 	logger := zaptest.NewLogger(t)
 
-	_, err := service.NewHandler("test", nil, logger)
+	_, err := service.NewHandler("test", nil, nil, logger)
 	assert.ErrorContains(t, err, "must not be nil")
 
-	_, err = service.NewHandler("", &mockIPMapper{}, logger)
+	_, err = service.NewHandler("", &mockIPMapper{}, nil, logger)
 	assert.ErrorContains(t, err, "invalid annotation key")
 
-	_, err = service.NewHandler("invalid key 1", &mockIPMapper{}, logger)
+	_, err = service.NewHandler("invalid key 1", &mockIPMapper{}, nil, logger)
 	assert.ErrorContains(t, err, "invalid annotation key")
 
-	handler, err := service.NewHandler("valid-key", &mockIPMapper{}, logger)
-	assert.NoError(t, err)
+	handler, err := service.NewHandler("valid-key", &mockIPMapper{}, nil, logger)
+	require.NoError(t, err)
 	assert.NotNil(t, handler)
 }
 
@@ -66,8 +67,8 @@ func TestHandlerHandle(t *testing.T) {
 
 	mapper := mockIPMapper{}
 
-	handler, err := service.NewHandler("test", &mapper, logger)
-	assert.NoError(t, err)
+	handler, err := service.NewHandler("test", &mapper, nil, logger)
+	require.NoError(t, err)
 
 	assert.ErrorContains(t, handler.Handle(nil), "must not be nil")
 
@@ -78,9 +79,9 @@ func TestHandlerHandle(t *testing.T) {
 		},
 	}
 
-	assert.NoError(t, handler.Handle(svc))
+	require.NoError(t, handler.Handle(svc))
 
-	// mo mappings expected, as no ports are defined
+	// no mappings expected, as no ports are defined
 	assert.Empty(t, mapper.addEntries)
 
 	tcpPort1 := corev1.ServicePort{
@@ -103,7 +104,7 @@ func TestHandlerHandle(t *testing.T) {
 
 	svc.Spec.Ports = []corev1.ServicePort{tcpPort1}
 
-	assert.NoError(t, handler.Handle(svc))
+	require.NoError(t, handler.Handle(svc))
 
 	// no mappings expected, as the service does not have the annotation
 	assert.Empty(t, mapper.addEntries)
@@ -118,14 +119,14 @@ func TestHandlerHandle(t *testing.T) {
 	svc.Annotations["test"] = "12345"
 	svc.Spec.Ports = []corev1.ServicePort{udpPort}
 
-	assert.NoError(t, handler.Handle(svc))
+	require.NoError(t, handler.Handle(svc))
 
 	// no mappings expected, as the service does not contain a TCP port
 	assert.Empty(t, mapper.addEntries)
 
 	svc.Spec.Ports = []corev1.ServicePort{tcpPort1, udpPort, tcpPort2}
 
-	assert.NoError(t, handler.Handle(svc))
+	require.NoError(t, handler.Handle(svc))
 
 	// 1 mapping expected for the 1st tcp port
 	assert.Len(t, mapper.addEntries, 1)
@@ -136,7 +137,7 @@ func TestHandlerHandle(t *testing.T) {
 	// update annotations
 	svc.Annotations["test"] = "12346"
 
-	assert.NoError(t, handler.Handle(svc))
+	require.NoError(t, handler.Handle(svc))
 
 	// mapping update expected
 	assert.Len(t, mapper.addEntries, 2)
@@ -149,7 +150,7 @@ func TestHandlerHandle(t *testing.T) {
 
 	removeEntryCount := len(mapper.removeEntries)
 
-	assert.NoError(t, handler.Handle(svc))
+	require.NoError(t, handler.Handle(svc))
 
 	// mapping removal expected
 	assert.Len(t, mapper.removeEntries, removeEntryCount+1)
@@ -158,14 +159,14 @@ func TestHandlerHandle(t *testing.T) {
 	// add annotation again
 	svc.Annotations["test"] = "12347"
 
-	assert.NoError(t, handler.Handle(svc))
+	require.NoError(t, handler.Handle(svc))
 
 	// remove tcp ports
 	svc.Spec.Ports = []corev1.ServicePort{udpPort}
 
 	removeEntryCount = len(mapper.removeEntries)
 
-	assert.NoError(t, handler.Handle(svc))
+	require.NoError(t, handler.Handle(svc))
 
 	// mapping removal expected
 	assert.Len(t, mapper.removeEntries, removeEntryCount+1)
@@ -179,13 +180,80 @@ func TestHandlerHandleDelete(t *testing.T) {
 
 	mapper := mockIPMapper{}
 
-	handler, err := service.NewHandler("test", &mapper, logger)
-	assert.NoError(t, err)
+	handler, err := service.NewHandler("test", &mapper, nil, logger)
+	require.NoError(t, err)
 
 	assert.ErrorContains(t, handler.HandleDelete(""), "must not be empty")
 
-	assert.NoError(t, handler.HandleDelete("testname.testns"))
+	require.NoError(t, handler.HandleDelete("testname.testns"))
 
 	assert.Len(t, mapper.removeEntries, 1)
 	assert.Equal(t, "testname.testns", mapper.removeEntries[0])
+}
+
+func TestHandlerHandleIgnoreDisallowed(t *testing.T) {
+	t.Parallel()
+
+	logger := zaptest.NewLogger(t)
+
+	mapper := mockIPMapper{}
+
+	handler, err := service.NewHandler("test", &mapper, []string{"0-1024", "10250", "50000"}, logger)
+	require.NoError(t, err)
+
+	assert.ErrorContains(t, handler.Handle(nil), "must not be nil")
+
+	svc := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "testname",
+			Namespace: "testns",
+			Annotations: map[string]string{
+				"test": "12345",
+			},
+		},
+		Spec: corev1.ServiceSpec{
+			Ports: []corev1.ServicePort{
+				{
+					Name:     "tcp-1",
+					Port:     8080,
+					Protocol: corev1.ProtocolTCP,
+				},
+			},
+		},
+	}
+
+	require.NoError(t, handler.Handle(svc))
+
+	// 1 mapping expected for the 1st tcp port
+	assert.Len(t, mapper.addEntries, 1)
+	assert.Equal(t, "testname.testns", mapper.addEntries[0].svcName)
+	assert.Equal(t, 12345, mapper.addEntries[0].hostPort)
+	assert.Equal(t, 8080, mapper.addEntries[0].svcPort)
+
+	// update annotations
+	svc.Annotations["test"] = "1023"
+
+	require.NoError(t, handler.Handle(svc))
+
+	// mapping removal expected
+	assert.Len(t, mapper.removeEntries, 1)
+
+	// no new mappings expected
+	assert.Len(t, mapper.addEntries, 1)
+
+	// update annotations
+	svc.Annotations["test"] = "50000"
+
+	require.NoError(t, handler.Handle(svc))
+
+	// no new mappings expected
+	assert.Len(t, mapper.addEntries, 1)
+
+	// update annotations
+	svc.Annotations["test"] = "50002"
+
+	require.NoError(t, handler.Handle(svc))
+
+	// 1 mapping expected for the 1st tcp port
+	assert.Len(t, mapper.addEntries, 2)
 }

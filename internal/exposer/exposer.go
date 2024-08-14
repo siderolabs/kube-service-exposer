@@ -38,12 +38,12 @@ type Exposer struct {
 }
 
 // New creates a new Exposer.
-func New(annotationKey string, bindCIDRs []string, logger *zap.Logger) (*Exposer, error) {
+func New(annotationKey string, bindCIDRs, disallowedHostPortRanges []string, logger *zap.Logger) (*Exposer, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 
-	logger = logger.With(zap.String("annotation-key", annotationKey), zap.Strings("bind-cidrs", bindCIDRs))
+	logger = logger.With(zap.String("annotation-key", annotationKey), zap.Strings("bind-cidrs", bindCIDRs), zap.Strings("disallowed-host-port-ranges", disallowedHostPortRanges))
 
 	ipCollector := ip.NewCollector()
 
@@ -67,12 +67,12 @@ func New(annotationKey string, bindCIDRs []string, logger *zap.Logger) (*Exposer
 		return nil, fmt.Errorf("failed to create ipSetProvider: %w", err)
 	}
 
-	ipMapper, err := ip.NewMapper(ipSetProvider, nil, logger.With(zap.String("component", "ip-mapper")))
+	ipMapper, err := ip.NewMapper(ipSetProvider, &ip.TCPLoadBalancerProvider{}, logger.With(zap.String("component", "ip-mapper")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ipMapper: %w", err)
 	}
 
-	serviceHandler, err := service.NewHandler(annotationKey, ipMapper, logger.With(zap.String("component", "service-handler")))
+	serviceHandler, err := service.NewHandler(annotationKey, ipMapper, disallowedHostPortRanges, logger.With(zap.String("component", "service-handler")))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceHandler: %w", err)
 	}

@@ -5,6 +5,7 @@
 package ip
 
 import (
+	"errors"
 	"fmt"
 	"net"
 	"reflect"
@@ -44,10 +45,6 @@ type Mapper struct {
 func NewMapper(ipSetProvider SetProvider, loadBalancerController LoadBalancerProvider, logger *zap.Logger) (*Mapper, error) {
 	if ipSetProvider == nil {
 		return nil, fmt.Errorf("ipSetProvider must not be nil")
-	}
-
-	if loadBalancerController == nil {
-		loadBalancerController = &TCPLoadBalancerProvider{}
 	}
 
 	if logger == nil {
@@ -133,6 +130,13 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 	}
 
 	if err = lb.Start(); err != nil {
+		logger.Info("failed to start loadbalancer, attempt to stop it")
+
+		// we still need to close the loadbalancer, so that the health checks goroutines get terminated
+		if closeErr := lb.Close(); closeErr != nil {
+			return errors.Join(fmt.Errorf("failed to start loadbalancer: %w", err), fmt.Errorf("failed to close loadbalancer: %w", closeErr))
+		}
+
 		return fmt.Errorf("failed to start loadbalancer: %w", err)
 	}
 
@@ -165,6 +169,11 @@ func (m *Mapper) removeNoLock(svcName string) {
 	if mapping.lb != nil {
 		if err := mapping.lb.Close(); err != nil {
 			logger.Info("error on closing load balancer", zap.Error(err))
+		} else {
+			// successfully closed, wait for the proxy to finish running
+			if err = mapping.lb.Wait(); err != nil {
+				logger.Info("error on waiting for load balancer to close", zap.Error(err))
+			}
 		}
 	}
 

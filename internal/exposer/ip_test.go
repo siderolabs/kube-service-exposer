@@ -10,6 +10,7 @@ import (
 	"github.com/siderolabs/gen/maps"
 	"github.com/siderolabs/gen/xslices"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap/zaptest"
 
 	"github.com/siderolabs/kube-service-exposer/internal/exposer"
@@ -47,10 +48,10 @@ func TestFilteringIPSetProviderEmptyCIDRs(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
 	filteringProvider, err := exposer.NewFilteringIPSetProvider([]string{}, &provider, logger)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ips, err := filteringProvider.Get()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.ElementsMatch(t, maps.Keys(ips), []string{"0.0.0.0"})
 }
@@ -66,18 +67,18 @@ func TestFilteringIPSetProviderFilter(t *testing.T) {
 	logger := zaptest.NewLogger(t)
 
 	filteringProvider, err := exposer.NewFilteringIPSetProvider([]string{"172.20.0.0/24", "192.168.3.0/24"}, &provider, logger)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ips, err := filteringProvider.Get()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.ElementsMatch(t, maps.Keys(ips), []string{"172.20.0.42"})
 
 	filteringProvider, err = exposer.NewFilteringIPSetProvider([]string{"172.20.0.0/16", "192.168.2.0/24"}, &provider, logger)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ips, err = filteringProvider.Get()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.ElementsMatch(t, maps.Keys(ips), []string{"172.20.0.42", "192.168.2.42"})
 }

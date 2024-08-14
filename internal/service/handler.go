@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/validation"
+	"k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
@@ -23,15 +24,27 @@ type IPMapper interface {
 
 // Handler is a handler for services.
 type Handler struct {
-	ipMapper      IPMapper
-	logger        *zap.Logger
-	annotationKey string
+	ipMapper             IPMapper
+	logger               *zap.Logger
+	annotationKey        string
+	disallowedPortRanges []*net.PortRange
 }
 
 // NewHandler returns a new Handler.
-func NewHandler(annotationKey string, ipMapper IPMapper, logger *zap.Logger) (*Handler, error) {
+func NewHandler(annotationKey string, ipMapper IPMapper, disallowedHostPortRanges []string, logger *zap.Logger) (*Handler, error) {
 	if logger == nil {
 		logger = zap.NewNop()
+	}
+
+	portRanges := make([]*net.PortRange, 0, len(disallowedHostPortRanges))
+
+	for _, disallowedHostPort := range disallowedHostPortRanges {
+		portRange, err := net.ParsePortRange(disallowedHostPort)
+		if err != nil {
+			return nil, fmt.Errorf("invalid port range %q: %w", disallowedHostPort, err)
+		}
+
+		portRanges = append(portRanges, portRange)
 	}
 
 	errs := validation.ValidateAnnotations(map[string]string{annotationKey: "65535"}, field.NewPath("metadata", "annotations"))
@@ -44,9 +57,10 @@ func NewHandler(annotationKey string, ipMapper IPMapper, logger *zap.Logger) (*H
 	}
 
 	return &Handler{
-		annotationKey: annotationKey,
-		ipMapper:      ipMapper,
-		logger:        logger,
+		annotationKey:        annotationKey,
+		ipMapper:             ipMapper,
+		disallowedPortRanges: portRanges,
+		logger:               logger,
 	}, nil
 }
 
@@ -87,6 +101,16 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 	hostPort, err := strconv.Atoi(hostPortStr)
 	if err != nil {
 		return fmt.Errorf("invalid host port %q: %w", hostPortStr, err)
+	}
+
+	for _, portRange := range s.disallowedPortRanges {
+		if portRange.Contains(hostPort) {
+			logger.Warn("disallowed host port", zap.Int("host-port", hostPort), zap.String("disallowed-port-range", portRange.String()))
+
+			s.ipMapper.Remove(svcName)
+
+			return nil
+		}
 	}
 
 	svcTCPPorts := xslices.Filter(svc.Spec.Ports, func(port corev1.ServicePort) bool {

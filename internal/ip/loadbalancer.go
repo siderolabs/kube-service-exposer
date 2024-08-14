@@ -15,6 +15,7 @@ type LoadBalancer interface {
 	AddRoute(ipPort string, upstreamAddrs []string, options ...upstream.ListOption) error
 	Start() error
 	Close() error
+	Wait() error
 }
 
 // LoadBalancerProvider is a factory for LoadBalancer instances.
@@ -25,6 +26,7 @@ type LoadBalancerProvider interface {
 // TCPLoadBalancerProvider is a LoadBalancerProvider that creates and returns loadbalancer.TCP instances.
 type TCPLoadBalancerProvider struct{}
 
+// New returns a new loadbalancer.TCP instance.
 // New returns a new loadbalancer.TCP instance.
 func (t *TCPLoadBalancerProvider) New(logger *zap.Logger) (LoadBalancer, error) {
 	if logger == nil {

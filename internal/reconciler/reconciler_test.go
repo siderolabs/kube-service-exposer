@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -54,7 +55,7 @@ func TestReconcilerCreate(t *testing.T) {
 	assert.ErrorContains(t, err, "serviceHandler must not be nil")
 
 	rec, err := reconciler.New(&mockClientProvider{}, &mockServiceHandler{})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.NotNil(t, rec)
 }
 
@@ -75,7 +76,7 @@ func TestReconcilerReconcile(t *testing.T) {
 	serviceHandler := &mockServiceHandler{}
 
 	rec, err := reconciler.New(clientProvider, serviceHandler)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3)
 	defer cancel()
@@ -86,7 +87,7 @@ func TestReconcilerReconcile(t *testing.T) {
 			Namespace: "testns",
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Len(t, serviceHandler.deletes, 0)
 
@@ -99,7 +100,7 @@ func TestReconcilerReconcile(t *testing.T) {
 			Namespace: "testns",
 		},
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, serviceHandler.deletes[0], "non-existent.testns")
 	assert.Len(t, serviceHandler.handles, 1)

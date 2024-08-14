@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/siderolabs/kube-service-exposer/internal/memoizer"
 )
@@ -28,16 +29,16 @@ func TestGet(t *testing.T) {
 
 		return "aaa", nil
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	val, err := m.Get()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, 1, called)
 	assert.Equal(t, "aaa", val)
 
 	val, err = m.Get()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, 1, called)
 	assert.Equal(t, "aaa", val)
@@ -61,20 +62,20 @@ func TestRefresh(t *testing.T) {
 
 		return "", fmt.Errorf("unexpected call")
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	val, err := m.Get()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	assert.Equal(t, 1, called)
 	assert.Equal(t, "aaa", val)
 
 	newVal, err := m.Refresh()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "bbb", newVal)
 
 	newVal, err = m.Refresh()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, "bbb", newVal)
 
 	_, err = m.Refresh()
