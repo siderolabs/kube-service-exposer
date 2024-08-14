@@ -1,3 +1,34 @@
+## [kube-service-exposer 0.2.0](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.2.0) (2024-08-14)
+
+Welcome to the v0.2.0 release of kube-service-exposer!
+
+
+
+Please try out the release binaries and report any issues at
+https://github.com/siderolabs/kube-service-exposer/issues.
+
+### Contributors
+
+* Utku Ozdemir
+
+### Changes
+<details><summary>1 commit</summary>
+<p>
+
+* [`a09759e`](https://github.com/siderolabs/kube-service-exposer/commit/a09759e70e1c326738a2d403f1973b00ee16429c) fix: prevent the goroutine leak from lb health checks
+</p>
+</details>
+
+### Dependency Changes
+
+* **golang.org/x/sync**               v0.7.0 -> v0.8.0
+* **k8s.io/api**                      v0.30.2 -> v0.30.3
+* **k8s.io/client-go**                v0.30.3 **_new_**
+* **k8s.io/utils**                    fe8a2dddb1d0 -> 18e509b52bc8
+* **sigs.k8s.io/controller-runtime**  v0.18.4 -> v0.18.5
+
+Previous release can be found at [v0.1.4](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.1.4)
+
 ## [kube-service-exposer 0.1.3](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.1.3) (2024-06-20)
 
 Welcome to the v0.1.3 release of kube-service-exposer!
