@@ -5,6 +5,8 @@
 package ip
 
 import (
+	"iter"
+
 	"github.com/siderolabs/go-loadbalancer/loadbalancer"
 	"github.com/siderolabs/go-loadbalancer/upstream"
 	"go.uber.org/zap"
@@ -12,7 +14,7 @@ import (
 
 // LoadBalancer is an interface for loadbalancer instances.
 type LoadBalancer interface {
-	AddRoute(ipPort string, upstreamAddrs []string, options ...upstream.ListOption) error
+	AddRoute(ipPort string, upstreamAddrs iter.Seq[string], options ...upstream.ListOption) error
 	Start() error
 	Close() error
 	Wait() error

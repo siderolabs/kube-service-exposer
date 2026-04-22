@@ -5,6 +5,8 @@
 package ip_test
 
 import (
+	"iter"
+	"slices"
 	"testing"
 
 	"github.com/siderolabs/gen/xslices"
@@ -35,12 +37,12 @@ func (m *mockLoadBalancer) Wait() error {
 	return nil
 }
 
-func (m *mockLoadBalancer) AddRoute(ipPort string, upstreamAddrs []string, _ ...upstream.ListOption) error {
+func (m *mockLoadBalancer) AddRoute(ipPort string, upstreamAddrs iter.Seq[string], _ ...upstream.ListOption) error {
 	if m.routes == nil {
 		m.routes = make(map[string][]string)
 	}
 
-	m.routes[ipPort] = upstreamAddrs
+	m.routes[ipPort] = slices.Collect(upstreamAddrs)
 
 	return nil
 }
@@ -58,7 +60,7 @@ func (m *mockLoadBalancer) Close() error {
 }
 
 type mockLoadBalancerProvider struct {
-	lbs []ip.LoadBalancer
+	lbs []*mockLoadBalancer
 }
 
 func (m *mockLoadBalancerProvider) New(_ *zap.Logger) (ip.LoadBalancer, error) {
@@ -101,30 +103,30 @@ func TestMapper(t *testing.T) {
 	require.NoError(t, mapper.Add("svc1.ns1", 12345, 80))
 
 	assert.Len(t, lbProvider.lbs, 1)
-	assert.Len(t, lbProvider.lbs[0].(*mockLoadBalancer).routes, 2)
-	assert.Equal(t, []string{"svc1.ns1:80"}, lbProvider.lbs[0].(*mockLoadBalancer).routes["192.168.2.42:12345"])
-	assert.Equal(t, []string{"svc1.ns1:80"}, lbProvider.lbs[0].(*mockLoadBalancer).routes["172.20.0.42:12345"])
+	assert.Len(t, lbProvider.lbs[0].routes, 2)
+	assert.Equal(t, []string{"svc1.ns1:80"}, lbProvider.lbs[0].routes["192.168.2.42:12345"])
+	assert.Equal(t, []string{"svc1.ns1:80"}, lbProvider.lbs[0].routes["172.20.0.42:12345"])
 
 	assert.ErrorContains(t, mapper.Add("svc2.ns2", 12345, 80), "already registered to another service")
 
 	require.NoError(t, mapper.Add("svc2.ns2", 12346, 8080))
 
 	assert.Len(t, lbProvider.lbs, 2)
-	assert.Len(t, lbProvider.lbs[1].(*mockLoadBalancer).routes, 2)
-	assert.Equal(t, []string{"svc2.ns2:8080"}, lbProvider.lbs[1].(*mockLoadBalancer).routes["192.168.2.42:12346"])
-	assert.Equal(t, []string{"svc2.ns2:8080"}, lbProvider.lbs[1].(*mockLoadBalancer).routes["172.20.0.42:12346"])
+	assert.Len(t, lbProvider.lbs[1].routes, 2)
+	assert.Equal(t, []string{"svc2.ns2:8080"}, lbProvider.lbs[1].routes["192.168.2.42:12346"])
+	assert.Equal(t, []string{"svc2.ns2:8080"}, lbProvider.lbs[1].routes["172.20.0.42:12346"])
 
 	require.NoError(t, mapper.Add("svc2.ns2", 12347, 8081))
 
 	assert.Len(t, lbProvider.lbs, 3)
-	assert.Len(t, lbProvider.lbs[2].(*mockLoadBalancer).routes, 2)
-	assert.Equal(t, []string{"svc2.ns2:8081"}, lbProvider.lbs[2].(*mockLoadBalancer).routes["192.168.2.42:12347"])
-	assert.Equal(t, []string{"svc2.ns2:8081"}, lbProvider.lbs[2].(*mockLoadBalancer).routes["172.20.0.42:12347"])
+	assert.Len(t, lbProvider.lbs[2].routes, 2)
+	assert.Equal(t, []string{"svc2.ns2:8081"}, lbProvider.lbs[2].routes["192.168.2.42:12347"])
+	assert.Equal(t, []string{"svc2.ns2:8081"}, lbProvider.lbs[2].routes["172.20.0.42:12347"])
 
-	assert.True(t, lbProvider.lbs[0].(*mockLoadBalancer).started)
-	assert.False(t, lbProvider.lbs[0].(*mockLoadBalancer).closed)
+	assert.True(t, lbProvider.lbs[0].started)
+	assert.False(t, lbProvider.lbs[0].closed)
 
 	mapper.Remove("svc2.ns2")
 
-	assert.True(t, lbProvider.lbs[2].(*mockLoadBalancer).closed)
+	assert.True(t, lbProvider.lbs[2].closed)
 }

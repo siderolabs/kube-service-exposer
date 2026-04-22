@@ -13,7 +13,6 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -85,7 +84,7 @@ func New(annotationKey string, bindCIDRs, disallowedHostPortRanges []string, log
 	ctrller, err := controller.New(version.Name+"-controller", mgr,
 		controller.Options{
 			Reconciler:         rec,
-			NeedLeaderElection: ptr.To(false),
+			NeedLeaderElection: new(false),
 		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create controller: %w", err)
