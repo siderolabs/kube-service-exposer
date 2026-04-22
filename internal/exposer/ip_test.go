@@ -82,3 +82,56 @@ func TestFilteringIPSetProviderFilter(t *testing.T) {
 
 	assert.ElementsMatch(t, maps.Keys(ips), []string{"172.20.0.42", "192.168.2.42"})
 }
+
+func TestFilteringIPSetProviderRefreshChanged(t *testing.T) {
+	t.Parallel()
+
+	provider := &mockProvider{
+		ips: []string{"172.20.0.42"},
+	}
+
+	logger := zaptest.NewLogger(t)
+
+	filteringProvider, err := exposer.NewFilteringIPSetProvider([]string{"172.20.0.0/24"}, provider, logger)
+	require.NoError(t, err)
+
+	changed, err := filteringProvider.RefreshChanged()
+	require.NoError(t, err)
+	assert.True(t, changed)
+
+	changed, err = filteringProvider.RefreshChanged()
+	require.NoError(t, err)
+	assert.False(t, changed)
+
+	provider.ips = []string{"172.20.0.43"}
+
+	changed, err = filteringProvider.RefreshChanged()
+	require.NoError(t, err)
+	assert.True(t, changed)
+
+	ips, err := filteringProvider.Get()
+	require.NoError(t, err)
+
+	assert.ElementsMatch(t, maps.Keys(ips), []string{"172.20.0.43"})
+}
+
+func TestFilteringIPSetProviderRefreshChangedInitialEmptySet(t *testing.T) {
+	t.Parallel()
+
+	provider := &mockProvider{
+		ips: []string{},
+	}
+
+	logger := zaptest.NewLogger(t)
+
+	filteringProvider, err := exposer.NewFilteringIPSetProvider([]string{"172.20.0.0/24"}, provider, logger)
+	require.NoError(t, err)
+
+	changed, err := filteringProvider.RefreshChanged()
+	require.NoError(t, err)
+	assert.True(t, changed)
+
+	changed, err = filteringProvider.RefreshChanged()
+	require.NoError(t, err)
+	assert.False(t, changed)
+}

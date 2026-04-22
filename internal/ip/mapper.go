@@ -14,10 +14,19 @@ import (
 	"sync"
 	"time"
 
+	"github.com/hashicorp/go-multierror"
 	"github.com/siderolabs/gen/maps"
 	"github.com/siderolabs/go-loadbalancer/upstream"
 	"go.uber.org/zap"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+// Mapping contains information about a mapping between a Kubernetes Service and a host port.
+type Mapping struct {
+	ServiceKey client.ObjectKey
+	HostPort   int
+	SvcPort    int
+}
 
 // SetProvider in an interface for getting a set of IP addresses.
 type SetProvider interface {
@@ -27,7 +36,7 @@ type SetProvider interface {
 type portMapping struct {
 	hostIPSet map[string]struct{}
 	lb        LoadBalancer
-	svcName   string
+	svcKey    client.ObjectKey
 	svcPort   int
 	hostPort  int
 }
@@ -37,7 +46,7 @@ type Mapper struct {
 	ipSetProvider          SetProvider
 	loadBalancerController LoadBalancerProvider
 	hostPortToMapping      map[int]*portMapping
-	svcNameToPortMapping   map[string]*portMapping
+	svcKeyToPortMapping    map[client.ObjectKey]*portMapping
 	logger                 *zap.Logger
 	lock                   sync.Mutex
 }
@@ -54,35 +63,103 @@ func NewMapper(ipSetProvider SetProvider, loadBalancerController LoadBalancerPro
 
 	return &Mapper{
 		hostPortToMapping:      make(map[int]*portMapping),
-		svcNameToPortMapping:   make(map[string]*portMapping),
+		svcKeyToPortMapping:    make(map[client.ObjectKey]*portMapping),
 		ipSetProvider:          ipSetProvider,
 		loadBalancerController: loadBalancerController,
 		logger:                 logger,
 	}, nil
 }
 
-// Remove removes the mapping for the given service name.
+// Remove removes the mapping for the given service key.
 //
 // It will close any existing load balancer for that service and clear any related mappings.
-func (m *Mapper) Remove(svcName string) {
+func (m *Mapper) Remove(svcKey client.ObjectKey) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	m.removeNoLock(svcName)
+	m.removeNoLock(svcKey)
 }
 
-// Add adds a new mapping for the given service name.
+// Add adds a new mapping for the given service key.
 //
 // It will create a new load balancer and the related mappings.
 //
 // If there is an existing mapping for another service, an error is returned.
-func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
-	logger := m.logger.With(zap.String("svc-name", svcName), zap.Int("host-port", hostPort), zap.Int("svc-port", svcPort))
-
-	logger.Debug("add mapping")
-
+func (m *Mapper) Add(mapping Mapping) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
+
+	return m.addNoLock(mapping)
+}
+
+// Sync syncs the passed mappings.
+//
+// The passed list of mappings are considered as the full state:
+// any existing mapping that is not in the list will be removed,
+// and any mapping in the list that does not exist will be added.
+func (m *Mapper) Sync(mappings []Mapping) error {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	desiredKeys := make(map[client.ObjectKey]struct{}, len(mappings))
+
+	for _, mapping := range mappings {
+		desiredKeys[mapping.ServiceKey] = struct{}{}
+	}
+
+	// process removals first
+	for key := range m.svcKeyToPortMapping {
+		if _, exists := desiredKeys[key]; !exists {
+			m.removeNoLock(key)
+		}
+	}
+
+	var errs error
+
+	for _, mapping := range mappings {
+		if err := m.addNoLock(mapping); err != nil {
+			errs = multierror.Append(errs, err)
+		}
+	}
+
+	return errs
+}
+
+func (m *Mapper) removeNoLock(svcKey client.ObjectKey) {
+	logger := m.logger.With(zap.Stringer("svc-key", svcKey))
+
+	logger.Debug("remove mapping if exists")
+
+	mapping := m.svcKeyToPortMapping[svcKey]
+	if mapping == nil {
+		return
+	}
+
+	if mapping.lb != nil {
+		if err := mapping.lb.Close(); err != nil {
+			logger.Info("error on closing load balancer", zap.Error(err))
+		} else {
+			// successfully closed, wait for the proxy to finish running
+			if err = mapping.lb.Wait(); err != nil {
+				logger.Info("error on waiting for load balancer to close", zap.Error(err))
+			}
+		}
+	}
+
+	delete(m.hostPortToMapping, mapping.hostPort)
+	delete(m.svcKeyToPortMapping, svcKey)
+
+	logger.Info("removed mapping")
+}
+
+func (m *Mapper) addNoLock(mapping Mapping) error {
+	svcKey := mapping.ServiceKey
+	hostPort := mapping.HostPort
+	svcPort := mapping.SvcPort
+
+	logger := m.logger.With(zap.Stringer("svc-key", svcKey), zap.Int("host-port", hostPort), zap.Int("svc-port", svcPort))
+
+	logger.Debug("add mapping")
 
 	hostIPSet, err := m.ipSetProvider.Get()
 	if err != nil {
@@ -90,21 +167,21 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 	}
 
 	existingMappingForHostPort := m.hostPortToMapping[hostPort]
-	if existingMappingForHostPort != nil && existingMappingForHostPort.svcName != svcName {
-		return fmt.Errorf("host port %d is already registered to another service: %s", hostPort, existingMappingForHostPort.svcName)
+	if existingMappingForHostPort != nil && existingMappingForHostPort.svcKey != svcKey {
+		return fmt.Errorf("host port %d is already registered to another service: %s", hostPort, existingMappingForHostPort.svcKey.String())
 	}
 
-	existingMappingForService := m.svcNameToPortMapping[svcName]
+	existingMappingForService := m.svcKeyToPortMapping[svcKey]
 	if existingMappingForService != nil {
 		if existingMappingForService.hostPort == hostPort &&
 			existingMappingForService.svcPort == svcPort &&
 			reflect.DeepEqual(existingMappingForService.hostIPSet, hostIPSet) {
-			m.logger.Info("nothing to do, no changes in mapping")
+			logger.Info("nothing to do, no changes in mapping")
 
 			return nil
 		}
 
-		m.removeNoLock(svcName)
+		m.removeNoLock(svcKey)
 	}
 
 	if len(hostIPSet) == 0 {
@@ -114,16 +191,18 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 	}
 
 	// use an error level logger to avoid spamming the logs with upstream health check failure warnings
-	lbLogger := logger.With(zap.String("component", "loadbalancer")).WithOptions(zap.IncreaseLevel(zap.ErrorLevel))
+	lbLogger := logger.Named("loadbalancer").WithOptions(zap.IncreaseLevel(zap.ErrorLevel))
 
 	lb, err := m.loadBalancerController.New(lbLogger)
 	if err != nil {
 		return fmt.Errorf("failed to create loadbalancer: %w", err)
 	}
 
+	svcHost := svcKey.Name + "." + svcKey.Namespace
+
 	for ip := range hostIPSet {
 		if err = lb.AddRoute(net.JoinHostPort(ip, strconv.Itoa(hostPort)),
-			slices.Values([]string{net.JoinHostPort(svcName, strconv.Itoa(svcPort))}),
+			slices.Values([]string{net.JoinHostPort(svcHost, strconv.Itoa(svcPort))}),
 			upstream.WithHealthcheckTimeout(time.Second),
 		); err != nil {
 			return fmt.Errorf("failed to add route to loadbalancer: %w", err)
@@ -141,45 +220,18 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 		return fmt.Errorf("failed to start loadbalancer: %w", err)
 	}
 
-	mapping := &portMapping{
+	pMapping := &portMapping{
 		hostIPSet: hostIPSet,
-		svcName:   svcName,
+		svcKey:    svcKey,
 		svcPort:   svcPort,
 		hostPort:  hostPort,
 		lb:        lb,
 	}
 
-	m.hostPortToMapping[hostPort] = mapping
-	m.svcNameToPortMapping[svcName] = mapping
+	m.hostPortToMapping[hostPort] = pMapping
+	m.svcKeyToPortMapping[svcKey] = pMapping
 
 	logger.Info("added mapping", zap.Strings("ips", maps.Keys(hostIPSet)))
 
 	return nil
-}
-
-func (m *Mapper) removeNoLock(svcName string) {
-	logger := m.logger.With(zap.String("svc-name", svcName))
-
-	logger.Debug("remove mapping if exists")
-
-	mapping := m.svcNameToPortMapping[svcName]
-	if mapping == nil {
-		return
-	}
-
-	if mapping.lb != nil {
-		if err := mapping.lb.Close(); err != nil {
-			logger.Info("error on closing load balancer", zap.Error(err))
-		} else {
-			// successfully closed, wait for the proxy to finish running
-			if err = mapping.lb.Wait(); err != nil {
-				logger.Info("error on waiting for load balancer to close", zap.Error(err))
-			}
-		}
-	}
-
-	delete(m.hostPortToMapping, mapping.hostPort)
-	delete(m.svcNameToPortMapping, svcName)
-
-	logger.Info("removed mapping")
 }

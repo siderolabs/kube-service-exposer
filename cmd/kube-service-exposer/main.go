@@ -32,6 +32,7 @@ var rootCmdArgs struct {
 	pprofBindAddr            string
 	bindCIDRs                []string
 	disallowedHostPortRanges []string
+	syncPeriod               time.Duration
 
 	debug bool
 }
@@ -65,7 +66,7 @@ var rootCmd = &cobra.Command{
 
 		controllerruntimelog.SetLogger(zapr.NewLogger(logger))
 
-		exposer, err := exposer.New(rootCmdArgs.annotationKey, rootCmdArgs.bindCIDRs, rootCmdArgs.disallowedHostPortRanges, logger.With(zap.String("component", "exposer")))
+		exposer, err := exposer.New(rootCmdArgs.annotationKey, rootCmdArgs.bindCIDRs, rootCmdArgs.disallowedHostPortRanges, rootCmdArgs.syncPeriod, logger.Named("exposer"))
 		if err != nil {
 			return err
 		}
@@ -138,7 +139,7 @@ func runPprofServer(ctx context.Context, logger *zap.Logger) error {
 
 func init() {
 	rootCmd.Flags().StringVarP(&rootCmdArgs.annotationKey, "annotation-key", "a", version.Name+".sidero.dev/port",
-		"the annotation key to be looked for on the services to determine which port to expose ot from.")
+		"the annotation key to be looked for on the services to determine which port to expose it from.")
 	rootCmd.Flags().StringVar(&rootCmdArgs.pprofBindAddr, "pprof-bind-addr", "",
 		"the address to bind the pprof server to. Disabled when empty.")
 	rootCmd.Flags().StringSliceVarP(&rootCmdArgs.bindCIDRs, "bind-cidrs", "b", nil,
@@ -146,4 +147,8 @@ func init() {
 	rootCmd.Flags().StringSliceVar(&rootCmdArgs.disallowedHostPortRanges, "disallowed-host-port-ranges", nil,
 		"the port ranges on the host that are not allowed to be used. When a disallowed host port is attempted to be exposed, it will be skipped and a warning will be logged.")
 	rootCmd.Flags().BoolVar(&rootCmdArgs.debug, "debug", false, "enable debug logs.")
+	rootCmd.Flags().DurationVar(&rootCmdArgs.syncPeriod, "sync-period", 1*time.Minute,
+		"the period at which all services are synced. "+
+			"This is a fallback mechanism to ensure that the desired state is eventually consistent with the actual state. "+
+			"Setting this to 0 will disable periodic syncing.")
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
@@ -39,8 +38,8 @@ func (m *mockServiceHandler) Handle(svc *corev1.Service) error {
 	return nil
 }
 
-func (m *mockServiceHandler) HandleDelete(svcName string) error {
-	m.deletes = append(m.deletes, svcName)
+func (m *mockServiceHandler) HandleDelete(svcKey client.ObjectKey) error {
+	m.deletes = append(m.deletes, svcKey.Name+"."+svcKey.Namespace)
 
 	return nil
 }
@@ -82,7 +81,7 @@ func TestReconcilerReconcile(t *testing.T) {
 	defer cancel()
 
 	_, err = rec.Reconcile(ctx, reconcile.Request{
-		NamespacedName: types.NamespacedName{
+		NamespacedName: client.ObjectKey{
 			Name:      "testname",
 			Namespace: "testns",
 		},
@@ -95,7 +94,7 @@ func TestReconcilerReconcile(t *testing.T) {
 	assert.Equal(t, serviceHandler.handles[0].Namespace, "testns")
 
 	_, err = rec.Reconcile(ctx, reconcile.Request{
-		NamespacedName: types.NamespacedName{
+		NamespacedName: client.ObjectKey{
 			Name:      "non-existent",
 			Namespace: "testns",
 		},

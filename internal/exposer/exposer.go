@@ -13,14 +13,15 @@ import (
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/util/workqueue"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	"github.com/siderolabs/kube-service-exposer/internal/ip"
-	"github.com/siderolabs/kube-service-exposer/internal/memoizer"
 	"github.com/siderolabs/kube-service-exposer/internal/reconciler"
 	"github.com/siderolabs/kube-service-exposer/internal/service"
 	"github.com/siderolabs/kube-service-exposer/internal/version"
@@ -31,13 +32,14 @@ type Exposer struct {
 	manager        manager.Manager
 	controller     controller.Controller
 	logger         *zap.Logger
-	ipSetMemoizer  *memoizer.Memoizer[map[string]struct{}]
+	ipSetProvider  *FilteringIPSetProvider
 	serviceHandler *service.Handler
 	bindCIDRs      []string
+	syncPeriod     time.Duration
 }
 
 // New creates a new Exposer.
-func New(annotationKey string, bindCIDRs, disallowedHostPortRanges []string, logger *zap.Logger) (*Exposer, error) {
+func New(annotationKey string, bindCIDRs, disallowedHostPortRanges []string, syncPeriod time.Duration, logger *zap.Logger) (*Exposer, error) {
 	if logger == nil {
 		logger = zap.NewNop()
 	}
@@ -56,22 +58,17 @@ func New(annotationKey string, bindCIDRs, disallowedHostPortRanges []string, log
 		return nil, fmt.Errorf("failed to create manager: %w", err)
 	}
 
-	ipSetMemoizer, err := memoizer.New(ipCollector.Get)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create ipSetMemoizer: %w", err)
-	}
-
-	ipSetProvider, err := NewFilteringIPSetProvider(bindCIDRs, ipSetMemoizer, logger)
+	ipSetProvider, err := NewFilteringIPSetProvider(bindCIDRs, ipCollector, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ipSetProvider: %w", err)
 	}
 
-	ipMapper, err := ip.NewMapper(ipSetProvider, &ip.TCPLoadBalancerProvider{}, logger.With(zap.String("component", "ip-mapper")))
+	ipMapper, err := ip.NewMapper(ipSetProvider, &ip.TCPLoadBalancerProvider{}, logger.Named("ip-mapper"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ipMapper: %w", err)
 	}
 
-	serviceHandler, err := service.NewHandler(annotationKey, ipMapper, disallowedHostPortRanges, logger.With(zap.String("component", "service-handler")))
+	serviceHandler, err := service.NewHandler(annotationKey, ipMapper, disallowedHostPortRanges, logger.Named("service-handler"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceHandler: %w", err)
 	}
@@ -85,6 +82,9 @@ func New(annotationKey string, bindCIDRs, disallowedHostPortRanges []string, log
 		controller.Options{
 			Reconciler:         rec,
 			NeedLeaderElection: new(false),
+			// RateLimiter is the same as the default rate limiter created by the controller runtime,
+			// but sets the maxDelay for per-item backoff to 60 seconds instead of 1000 seconds (16 minutes)
+			RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[reconcile.Request](5*time.Millisecond, 60*time.Second),
 		})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create controller: %w", err)
@@ -93,10 +93,11 @@ func New(annotationKey string, bindCIDRs, disallowedHostPortRanges []string, log
 	exposer := &Exposer{
 		bindCIDRs:      bindCIDRs,
 		logger:         logger,
-		ipSetMemoizer:  ipSetMemoizer,
+		ipSetProvider:  ipSetProvider,
 		manager:        mgr,
 		serviceHandler: serviceHandler,
 		controller:     ctrller,
+		syncPeriod:     syncPeriod,
 	}
 
 	return exposer, nil
@@ -107,7 +108,7 @@ func (e *Exposer) Run(ctx context.Context) error {
 	e.logger.Info("starting exposer")
 
 	if len(e.bindCIDRs) == 0 {
-		e.logger.Info("bindCIDRs are empty, mappings will listen on all interfaces")
+		e.logger.Info("bind CIDRs are empty, mappings will listen on all interfaces")
 	}
 
 	if err := e.controller.Watch(source.Kind(e.manager.GetCache(), &corev1.Service{}, &handler.TypedEnqueueRequestForObject[*corev1.Service]{})); err != nil {
@@ -129,28 +130,50 @@ func (e *Exposer) Run(ctx context.Context) error {
 		return nil
 	})
 
-	if len(e.bindCIDRs) > 0 {
-		e.logger.Info("bindCIDRs are specified, start IP change listener")
-
-		ipTracker, err := ip.NewTracker(e.ipSetMemoizer, e.manager, e.serviceHandler, 30*time.Second, nil, e.logger.With(zap.String("component", "ip-tracker")))
-		if err != nil {
-			return fmt.Errorf("failed to create ipTracker: %w", err)
-		}
-
+	if e.syncPeriod > 0 {
 		eg.Go(func() error {
-			if err = ipTracker.Run(ctx); err != nil {
-				return fmt.Errorf("failed to start IP change listener: %w", err)
+			syncer, err := NewPeriodicSyncer(e.manager, e.serviceHandler, e.syncPeriod, e.logger.Named("periodic-syncer"))
+			if err != nil {
+				return fmt.Errorf("failed to create periodic syncer: %w", err)
+			}
+
+			if err = syncer.Run(ctx); err != nil {
+				return fmt.Errorf("failed to start periodic syncer: %w", err)
 			}
 
 			if ctx.Err() == nil {
-				// context is not canceled, but the IP change listener has stopped
-				return fmt.Errorf("IP change listener stopped unexpectedly")
+				// context is not canceled, but the periodic syncer has stopped
+				return fmt.Errorf("periodic syncer stopped unexpectedly")
 			}
 
 			return nil
 		})
 	} else {
-		e.logger.Info("bindCIDRs are empty, IP change listener will not be started")
+		e.logger.Info("periodic sync is disabled")
+	}
+
+	if len(e.bindCIDRs) > 0 {
+		e.logger.Info("bind CIDRs are specified, starting IP change tracker")
+
+		eg.Go(func() error {
+			ipTracker, err := NewIPChangeTracker(e.ipSetProvider, e.manager, e.serviceHandler, 30*time.Second, e.logger.Named("ip-change-tracker"))
+			if err != nil {
+				return fmt.Errorf("failed to create IP change tracker: %w", err)
+			}
+
+			if err = ipTracker.Run(ctx); err != nil {
+				return fmt.Errorf("failed to start IP change tracker: %w", err)
+			}
+
+			if ctx.Err() == nil {
+				// context is not canceled, but the IP change tracker has stopped
+				return fmt.Errorf("IP change tracker stopped unexpectedly")
+			}
+
+			return nil
+		})
+	} else {
+		e.logger.Info("bind CIDRs are empty, IP change tracker will not be started")
 	}
 
 	return eg.Wait()

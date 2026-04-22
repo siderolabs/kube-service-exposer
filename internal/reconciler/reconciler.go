@@ -23,7 +23,7 @@ type ClientProvider interface {
 // ServiceHandler is an interface for handling Service resources.
 type ServiceHandler interface {
 	Handle(svc *corev1.Service) error
-	HandleDelete(svcName string) error
+	HandleDelete(svcKey client.ObjectKey) error
 }
 
 var _ reconcile.Reconciler = &Reconciler{}
@@ -55,11 +55,15 @@ func New(clientProvider ClientProvider, serviceHandler ServiceHandler) (*Reconci
 // Reconcile implements reconcile.Reconciler.
 func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
 	svc := &corev1.Service{}
-	svcName := request.Name + "." + request.Namespace
 
 	err := r.clientProvider.GetClient().Get(ctx, request.NamespacedName, svc)
 	if errors.IsNotFound(err) {
-		if err = r.serviceHandler.HandleDelete(svcName); err != nil {
+		svcKey := client.ObjectKey{
+			Namespace: request.Namespace,
+			Name:      request.Name,
+		}
+
+		if err = r.serviceHandler.HandleDelete(svcKey); err != nil {
 			return reconcile.Result{}, err
 		}
 

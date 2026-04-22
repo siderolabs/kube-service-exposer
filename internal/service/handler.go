@@ -14,12 +14,16 @@ import (
 	"k8s.io/apimachinery/pkg/api/validation"
 	"k8s.io/apimachinery/pkg/util/net"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	"github.com/siderolabs/kube-service-exposer/internal/ip"
 )
 
 // IPMapper is an interface for creating or removing port mappings for services.
 type IPMapper interface {
-	Add(svcName string, hostPort, svcPort int) error
-	Remove(svcName string)
+	Add(mapping ip.Mapping) error
+	Remove(svcKey client.ObjectKey)
+	Sync(mappings []ip.Mapping) error
 }
 
 // Handler is a handler for services.
@@ -70,9 +74,58 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 		return fmt.Errorf("service must not be nil")
 	}
 
-	svcName := svc.Name + "." + svc.Namespace
+	svcKey := client.ObjectKey{
+		Namespace: svc.Namespace,
+		Name:      svc.Name,
+	}
 
-	logger := s.logger.With(zap.String("svc-name", svcName))
+	if mapping, ok := s.serviceToMapping(svc); ok {
+		return s.ipMapper.Add(mapping)
+	}
+
+	s.ipMapper.Remove(svcKey)
+
+	return nil
+}
+
+// HandleDelete handles a service deletion.
+func (s *Handler) HandleDelete(svcKey client.ObjectKey) error {
+	if svcKey.Name == "" || svcKey.Namespace == "" {
+		return fmt.Errorf("svc name and namespace must not be empty")
+	}
+
+	s.logger.Debug("handle Service delete", zap.String("ns", svcKey.Namespace), zap.String("name", svcKey.Name))
+
+	s.ipMapper.Remove(svcKey)
+
+	return nil
+}
+
+// HandleAll handles all services, treating the provided list as the full state
+// by removing mappings not in the list and adding mappings from the list that do not yet exist.
+func (s *Handler) HandleAll(services []corev1.Service) error {
+	var mappings []ip.Mapping
+
+	for i := range services {
+		if mapping, ok := s.serviceToMapping(&services[i]); ok {
+			mappings = append(mappings, mapping)
+		}
+	}
+
+	if err := s.ipMapper.Sync(mappings); err != nil {
+		return fmt.Errorf("sync failed: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Handler) serviceToMapping(svc *corev1.Service) (mapping ip.Mapping, ok bool) {
+	svcKey := client.ObjectKey{
+		Namespace: svc.Namespace,
+		Name:      svc.Name,
+	}
+
+	logger := s.logger.With(zap.Stringer("svc-key", svcKey))
 
 	logger.Debug("handle Service")
 
@@ -91,25 +144,23 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 	if !annotationIsSet {
 		logger.Debug("annotation is not set on service")
 
-		s.ipMapper.Remove(svcName)
-
-		return nil
+		return ip.Mapping{}, false
 	}
 
 	logger.Debug("found annotation", zap.String("key", s.annotationKey), zap.String("value", hostPortStr))
 
 	hostPort, err := strconv.Atoi(hostPortStr)
 	if err != nil {
-		return fmt.Errorf("invalid host port %q: %w", hostPortStr, err)
+		logger.Warn("invalid host port", zap.String("value", hostPortStr))
+
+		return ip.Mapping{}, false
 	}
 
 	for _, portRange := range s.disallowedPortRanges {
 		if portRange.Contains(hostPort) {
 			logger.Warn("disallowed host port", zap.Int("host-port", hostPort), zap.String("disallowed-port-range", portRange.String()))
 
-			s.ipMapper.Remove(svcName)
-
-			return nil
+			return ip.Mapping{}, false
 		}
 	}
 
@@ -120,9 +171,7 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 	if len(svcTCPPorts) == 0 {
 		logger.Debug("no TCP ports on Service")
 
-		s.ipMapper.Remove(svcName)
-
-		return nil
+		return ip.Mapping{}, false
 	}
 
 	svcPort := int(svcTCPPorts[0].Port)
@@ -131,22 +180,9 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 		logger.Info("more than one TCP port on Service, using the first one", zap.Int("svc-port", svcPort))
 	}
 
-	if err = s.ipMapper.Add(svcName, hostPort, svcPort); err != nil {
-		return fmt.Errorf("failed to register host port: %w", err)
-	}
-
-	return nil
-}
-
-// HandleDelete handles a service deletion.
-func (s *Handler) HandleDelete(svcName string) error {
-	if svcName == "" {
-		return fmt.Errorf("svcName must not be empty")
-	}
-
-	s.logger.Debug("handle Service delete", zap.String("svc-name", svcName))
-
-	s.ipMapper.Remove(svcName)
-
-	return nil
+	return ip.Mapping{
+		ServiceKey: svcKey,
+		HostPort:   hostPort,
+		SvcPort:    svcPort,
+	}, true
 }
