@@ -25,3 +25,7 @@ name: release
 spec:
   artifacts:
     - kube-service-exposer-*
+---
+kind: service.CodeCov
+spec:
+  targetThreshold: 40

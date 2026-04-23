@@ -74,7 +74,11 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 
 	logger := s.logger.With(zap.String("svc-name", svcName))
 
-	logger.Debug("handle Service")
+	logger.Debug("handle Service",
+		zap.String("type", string(svc.Spec.Type)),
+		zap.Int("annotation-count", len(svc.GetAnnotations())),
+		zap.Int("port-count", len(svc.Spec.Ports)),
+	)
 
 	annotationIsSet := false
 	hostPortStr := ""
@@ -89,7 +93,7 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 	}
 
 	if !annotationIsSet {
-		logger.Debug("annotation is not set on service")
+		logger.Debug("annotation is not set on service, remove mapping if it exists")
 
 		s.ipMapper.Remove(svcName)
 
@@ -100,12 +104,16 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 
 	hostPort, err := strconv.Atoi(hostPortStr)
 	if err != nil {
+		logger.Info("failed to parse host port annotation, leave existing mapping unchanged", zap.String("value", hostPortStr), zap.Error(err))
+
 		return fmt.Errorf("invalid host port %q: %w", hostPortStr, err)
 	}
 
+	logger.Debug("parsed host port", zap.Int("host-port", hostPort))
+
 	for _, portRange := range s.disallowedPortRanges {
 		if portRange.Contains(hostPort) {
-			logger.Warn("disallowed host port", zap.Int("host-port", hostPort), zap.String("disallowed-port-range", portRange.String()))
+			logger.Warn("disallowed host port, remove mapping if it exists", zap.Int("host-port", hostPort), zap.String("disallowed-port-range", portRange.String()))
 
 			s.ipMapper.Remove(svcName)
 
@@ -117,8 +125,10 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 		return port.Protocol == corev1.ProtocolTCP
 	})
 
+	logger.Debug("filtered service ports", zap.Int("tcp-port-count", len(svcTCPPorts)), zap.Any("ports", svc.Spec.Ports))
+
 	if len(svcTCPPorts) == 0 {
-		logger.Debug("no TCP ports on Service")
+		logger.Debug("no TCP ports on Service, remove mapping if it exists")
 
 		s.ipMapper.Remove(svcName)
 
@@ -128,12 +138,18 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 	svcPort := int(svcTCPPorts[0].Port)
 
 	if len(svcTCPPorts) > 1 {
-		logger.Info("more than one TCP port on Service, using the first one", zap.Int("svc-port", svcPort))
+		logger.Debug("more than one TCP port on Service, using the first one", zap.Int("svc-port", svcPort), zap.String("port-name", svcTCPPorts[0].Name))
 	}
 
+	logger.Debug("register service mapping", zap.Int("host-port", hostPort), zap.Int("svc-port", svcPort))
+
 	if err = s.ipMapper.Add(svcName, hostPort, svcPort); err != nil {
+		logger.Info("failed to register service mapping", zap.Int("host-port", hostPort), zap.Int("svc-port", svcPort), zap.Error(err))
+
 		return fmt.Errorf("failed to register host port: %w", err)
 	}
+
+	logger.Debug("service mapping registered", zap.Int("host-port", hostPort), zap.Int("svc-port", svcPort))
 
 	return nil
 }
@@ -144,7 +160,7 @@ func (s *Handler) HandleDelete(svcName string) error {
 		return fmt.Errorf("svcName must not be empty")
 	}
 
-	s.logger.Debug("handle Service delete", zap.String("svc-name", svcName))
+	s.logger.Debug("handle Service delete, remove mapping if it exists", zap.String("svc-name", svcName))
 
 	s.ipMapper.Remove(svcName)
 

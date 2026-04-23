@@ -61,22 +61,22 @@ func New(annotationKey string, bindCIDRs, disallowedHostPortRanges []string, log
 		return nil, fmt.Errorf("failed to create ipSetMemoizer: %w", err)
 	}
 
-	ipSetProvider, err := NewFilteringIPSetProvider(bindCIDRs, ipSetMemoizer, logger)
+	ipSetProvider, err := NewFilteringIPSetProvider(bindCIDRs, ipSetMemoizer, logger.Named("ip-set-provider"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ipSetProvider: %w", err)
 	}
 
-	ipMapper, err := ip.NewMapper(ipSetProvider, &ip.TCPLoadBalancerProvider{}, logger.With(zap.String("component", "ip-mapper")))
+	ipMapper, err := ip.NewMapper(ipSetProvider, &ip.TCPLoadBalancerProvider{}, logger.Named("ip-mapper"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create ipMapper: %w", err)
 	}
 
-	serviceHandler, err := service.NewHandler(annotationKey, ipMapper, disallowedHostPortRanges, logger.With(zap.String("component", "service-handler")))
+	serviceHandler, err := service.NewHandler(annotationKey, ipMapper, disallowedHostPortRanges, logger.Named("service-handler"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create serviceHandler: %w", err)
 	}
 
-	rec, err := reconciler.New(mgr, serviceHandler)
+	rec, err := reconciler.New(mgr, serviceHandler, logger.Named("reconciler"))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create reconciler: %w", err)
 	}
@@ -132,7 +132,7 @@ func (e *Exposer) Run(ctx context.Context) error {
 	if len(e.bindCIDRs) > 0 {
 		e.logger.Info("bindCIDRs are specified, start IP change listener")
 
-		ipTracker, err := ip.NewTracker(e.ipSetMemoizer, e.manager, e.serviceHandler, 30*time.Second, nil, e.logger.With(zap.String("component", "ip-tracker")))
+		ipTracker, err := ip.NewTracker(e.ipSetMemoizer, e.manager, e.serviceHandler, 30*time.Second, nil, e.logger.Named("ip-tracker"))
 		if err != nil {
 			return fmt.Errorf("failed to create ipTracker: %w", err)
 		}

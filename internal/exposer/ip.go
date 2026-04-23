@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/netip"
 
+	"github.com/siderolabs/gen/maps"
 	"go.uber.org/zap"
 
 	"github.com/siderolabs/kube-service-exposer/internal/cidrs"
@@ -29,6 +30,10 @@ type FilteringIPSetProvider struct {
 
 // NewFilteringIPSetProvider returns a new FilteringIPSetProvider.
 func NewFilteringIPSetProvider(bindCIDRs []string, underlyingProvider IPSetProvider, logger *zap.Logger) (*FilteringIPSetProvider, error) {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	bindCIDRPrefixes := make([]netip.Prefix, 0, len(bindCIDRs))
 
 	for _, bindCIDR := range bindCIDRs {
@@ -56,15 +61,25 @@ func NewFilteringIPSetProvider(bindCIDRs []string, underlyingProvider IPSetProvi
 // It returns the set of host IP addresses to bind the load balancer to.
 func (e *FilteringIPSetProvider) Get() (map[string]struct{}, error) {
 	if len(e.bindCIDRPrefixes) == 0 {
+		e.logger.Debug("no bind CIDRs configured, use wildcard IP")
+
 		return map[string]struct{}{"0.0.0.0": {}}, nil
 	}
 
 	allIPsSet, err := e.ipCache.Get()
 	if err != nil {
+		e.logger.Info("failed to get all IP addresses", zap.Error(err))
+
 		return nil, fmt.Errorf("failed to get all IP addresses: %w", err)
 	}
 
-	return cidrs.FilterIPSet(e.bindCIDRPrefixes, allIPsSet, func(ip string, err error) {
-		e.logger.Debug("failed to parse IP address", zap.String("ip", ip), zap.Error(err))
-	}), nil
+	e.logger.Debug("filter host IP set", zap.Int("ip-count", len(allIPsSet)))
+
+	filteredIPs := cidrs.FilterIPSet(e.bindCIDRPrefixes, allIPsSet, func(ip string, err error) {
+		e.logger.Info("failed to parse IP address", zap.String("ip", ip), zap.Error(err))
+	})
+
+	e.logger.Debug("filtered host IP set", zap.Int("ip-count", len(filteredIPs)), zap.Strings("ips", maps.Keys(filteredIPs)))
+
+	return filteredIPs, nil
 }

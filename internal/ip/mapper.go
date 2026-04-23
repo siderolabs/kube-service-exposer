@@ -86,23 +86,40 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 
 	hostIPSet, err := m.ipSetProvider.Get()
 	if err != nil {
+		logger.Info("failed to get matching IP set", zap.Error(err))
+
 		return fmt.Errorf("failed to get matching IP set: %w", err)
 	}
 
+	logger.Debug("resolved host IP set", zap.Int("ip-count", len(hostIPSet)), zap.Strings("ips", maps.Keys(hostIPSet)))
+
 	existingMappingForHostPort := m.hostPortToMapping[hostPort]
 	if existingMappingForHostPort != nil && existingMappingForHostPort.svcName != svcName {
+		logger.Warn("host port conflict: already registered to another service",
+			zap.String("conflicting-svc", existingMappingForHostPort.svcName),
+		)
+
 		return fmt.Errorf("host port %d is already registered to another service: %s", hostPort, existingMappingForHostPort.svcName)
 	}
 
 	existingMappingForService := m.svcNameToPortMapping[svcName]
 	if existingMappingForService != nil {
+		logger.Debug("existing mapping found",
+			zap.Int("existing-host-port", existingMappingForService.hostPort),
+			zap.Int("existing-svc-port", existingMappingForService.svcPort),
+			zap.Int("existing-ip-count", len(existingMappingForService.hostIPSet)),
+			zap.Strings("existing-ips", maps.Keys(existingMappingForService.hostIPSet)),
+		)
+
 		if existingMappingForService.hostPort == hostPort &&
 			existingMappingForService.svcPort == svcPort &&
 			reflect.DeepEqual(existingMappingForService.hostIPSet, hostIPSet) {
-			m.logger.Info("nothing to do, no changes in mapping")
+			logger.Debug("nothing to do, no changes in mapping")
 
 			return nil
 		}
+
+		logger.Debug("existing mapping changed, replacing it")
 
 		m.removeNoLock(svcName)
 	}
@@ -114,21 +131,32 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 	}
 
 	// use an error level logger to avoid spamming the logs with upstream health check failure warnings
-	lbLogger := logger.With(zap.String("component", "loadbalancer")).WithOptions(zap.IncreaseLevel(zap.ErrorLevel))
+	lbLogger := logger.Named("loadbalancer").WithOptions(zap.IncreaseLevel(zap.ErrorLevel))
 
 	lb, err := m.loadBalancerController.New(lbLogger)
 	if err != nil {
+		logger.Info("failed to create loadbalancer", zap.Error(err))
+
 		return fmt.Errorf("failed to create loadbalancer: %w", err)
 	}
 
 	for ip := range hostIPSet {
-		if err = lb.AddRoute(net.JoinHostPort(ip, strconv.Itoa(hostPort)),
-			slices.Values([]string{net.JoinHostPort(svcName, strconv.Itoa(svcPort))}),
+		listenAddr := net.JoinHostPort(ip, strconv.Itoa(hostPort))
+		upstreamAddr := net.JoinHostPort(svcName, strconv.Itoa(svcPort))
+
+		logger.Debug("add loadbalancer route", zap.String("listen-addr", listenAddr), zap.String("upstream-addr", upstreamAddr))
+
+		if err = lb.AddRoute(listenAddr,
+			slices.Values([]string{upstreamAddr}),
 			upstream.WithHealthcheckTimeout(time.Second),
 		); err != nil {
+			logger.Info("failed to add loadbalancer route", zap.String("listen-addr", listenAddr), zap.String("upstream-addr", upstreamAddr), zap.Error(err))
+
 			return fmt.Errorf("failed to add route to loadbalancer: %w", err)
 		}
 	}
+
+	logger.Debug("start loadbalancer")
 
 	if err = lb.Start(); err != nil {
 		logger.Info("failed to start loadbalancer, attempt to stop it")
@@ -140,6 +168,8 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 
 		return fmt.Errorf("failed to start loadbalancer: %w", err)
 	}
+
+	logger.Debug("loadbalancer started")
 
 	mapping := &portMapping{
 		hostIPSet: hostIPSet,
@@ -164,16 +194,31 @@ func (m *Mapper) removeNoLock(svcName string) {
 
 	mapping := m.svcNameToPortMapping[svcName]
 	if mapping == nil {
+		logger.Debug("mapping does not exist")
+
 		return
 	}
 
+	logger.Debug("mapping found, removing",
+		zap.Int("host-port", mapping.hostPort),
+		zap.Int("svc-port", mapping.svcPort),
+		zap.Int("ip-count", len(mapping.hostIPSet)),
+		zap.Strings("ips", maps.Keys(mapping.hostIPSet)),
+	)
+
 	if mapping.lb != nil {
+		logger.Debug("close loadbalancer")
+
 		if err := mapping.lb.Close(); err != nil {
 			logger.Info("error on closing load balancer", zap.Error(err))
 		} else {
+			logger.Debug("wait for loadbalancer to stop")
+
 			// successfully closed, wait for the proxy to finish running
 			if err = mapping.lb.Wait(); err != nil {
 				logger.Info("error on waiting for load balancer to close", zap.Error(err))
+			} else {
+				logger.Debug("loadbalancer stopped")
 			}
 		}
 	}

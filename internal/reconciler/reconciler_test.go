@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap/zaptest"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -48,13 +49,15 @@ func (m *mockServiceHandler) HandleDelete(svcName string) error {
 func TestReconcilerCreate(t *testing.T) {
 	t.Parallel()
 
-	_, err := reconciler.New(nil, &mockServiceHandler{})
+	logger := zaptest.NewLogger(t)
+
+	_, err := reconciler.New(nil, &mockServiceHandler{}, logger)
 	assert.ErrorContains(t, err, "clientProvider must not be nil")
 
-	_, err = reconciler.New(&mockClientProvider{}, nil)
+	_, err = reconciler.New(&mockClientProvider{}, nil, logger)
 	assert.ErrorContains(t, err, "serviceHandler must not be nil")
 
-	rec, err := reconciler.New(&mockClientProvider{}, &mockServiceHandler{})
+	rec, err := reconciler.New(&mockClientProvider{}, &mockServiceHandler{}, nil)
 	require.NoError(t, err)
 	assert.NotNil(t, rec)
 }
@@ -75,7 +78,7 @@ func TestReconcilerReconcile(t *testing.T) {
 
 	serviceHandler := &mockServiceHandler{}
 
-	rec, err := reconciler.New(clientProvider, serviceHandler)
+	rec, err := reconciler.New(clientProvider, serviceHandler, zaptest.NewLogger(t))
 	require.NoError(t, err)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3)

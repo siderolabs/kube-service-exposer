@@ -63,9 +63,9 @@ var rootCmd = &cobra.Command{
 			return fmt.Errorf("failed to create logger: %w", err)
 		}
 
-		controllerruntimelog.SetLogger(zapr.NewLogger(logger))
+		controllerruntimelog.SetLogger(zapr.NewLogger(logger.Named("runtime")))
 
-		exposer, err := exposer.New(rootCmdArgs.annotationKey, rootCmdArgs.bindCIDRs, rootCmdArgs.disallowedHostPortRanges, logger.With(zap.String("component", "exposer")))
+		exposer, err := exposer.New(rootCmdArgs.annotationKey, rootCmdArgs.bindCIDRs, rootCmdArgs.disallowedHostPortRanges, logger.Named("exposer"))
 		if err != nil {
 			return err
 		}
@@ -78,7 +78,7 @@ var rootCmd = &cobra.Command{
 
 		if rootCmdArgs.pprofBindAddr != "" {
 			eg.Go(func() error {
-				return runPprofServer(ctx, logger)
+				return runPprofServer(ctx, logger.Named("pprof-server"))
 			})
 		}
 

@@ -79,6 +79,8 @@ func NewTracker(refresher SetRefresher, clientProvider ClientProvider, serviceHa
 
 // Run runs the Tracker. It blocks until the context is canceled.
 func (t *Tracker) Run(ctx context.Context) error {
+	t.logger.Info("starting IP tracker", zap.Duration("period", t.period))
+
 	ticker := t.clock.Ticker(t.period)
 	defer ticker.Stop()
 
@@ -100,8 +102,12 @@ func (t *Tracker) handleChanges(ctx context.Context) error {
 
 	ipSet, err := t.ipSetRefresher.Refresh()
 	if err != nil {
+		t.logger.Info("failed to refresh IP set", zap.Error(err))
+
 		return fmt.Errorf("failed to refresh IP set: %w", err)
 	}
+
+	t.logger.Debug("refreshed IP set", zap.Int("old-ip-count", len(t.ipSet)), zap.Int("new-ip-count", len(ipSet)))
 
 	if reflect.DeepEqual(ipSet, t.ipSet) {
 		t.logger.Debug("IP set didn't change, skip refresh")
@@ -111,18 +117,26 @@ func (t *Tracker) handleChanges(ctx context.Context) error {
 
 	t.ipSet = ipSet
 
-	t.logger.Info("detected changes on IP set, refresh mappings")
+	t.logger.Info("detected changes on IP set, refresh mappings", zap.Int("ip-count", len(ipSet)))
 
 	svcList := &corev1.ServiceList{}
 
 	if err = t.clientProvider.GetClient().List(ctx, svcList); err != nil {
+		t.logger.Info("failed to list services for IP refresh", zap.Error(err))
+
 		return fmt.Errorf("failed to list Services: %w", err)
 	}
+
+	t.logger.Debug("listed services for IP refresh", zap.Int("service-count", len(svcList.Items)))
 
 	var errs error
 
 	for _, svc := range svcList.Items {
+		t.logger.Debug("refreshing service mapping", zap.String("svc-name", svc.Name+"."+svc.Namespace))
+
 		if err = t.serviceHandler.Handle(&svc); err != nil {
+			t.logger.Info("failed to refresh service mapping", zap.String("svc-name", svc.Name+"."+svc.Namespace), zap.Error(err))
+
 			errs = multierror.Append(errs, fmt.Errorf("failed to handle Service %s/%s: %w", svc.Namespace, svc.Name, err))
 		}
 	}

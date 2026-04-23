@@ -9,6 +9,7 @@ import (
 	"context"
 	"fmt"
 
+	"go.uber.org/zap"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -34,10 +35,11 @@ var _ reconcile.Reconciler = &Reconciler{}
 type Reconciler struct {
 	serviceHandler ServiceHandler
 	clientProvider ClientProvider
+	logger         *zap.Logger
 }
 
 // New returns a new Reconciler.
-func New(clientProvider ClientProvider, serviceHandler ServiceHandler) (*Reconciler, error) {
+func New(clientProvider ClientProvider, serviceHandler ServiceHandler, logger *zap.Logger) (*Reconciler, error) {
 	if serviceHandler == nil {
 		return nil, fmt.Errorf("serviceHandler must not be nil")
 	}
@@ -46,19 +48,30 @@ func New(clientProvider ClientProvider, serviceHandler ServiceHandler) (*Reconci
 		return nil, fmt.Errorf("clientProvider must not be nil")
 	}
 
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+
 	return &Reconciler{
 		serviceHandler: serviceHandler,
 		clientProvider: clientProvider,
+		logger:         logger,
 	}, nil
 }
 
 // Reconcile implements reconcile.Reconciler.
 func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (reconcile.Result, error) {
-	svc := &corev1.Service{}
 	svcName := request.Name + "." + request.Namespace
+	logger := r.logger.With(zap.String("svc-name", svcName), zap.Stringer("request", request.NamespacedName))
+
+	logger.Debug("reconcile request")
+
+	svc := &corev1.Service{}
 
 	err := r.clientProvider.GetClient().Get(ctx, request.NamespacedName, svc)
 	if errors.IsNotFound(err) {
+		logger.Debug("service not found in cache, handling as delete")
+
 		if err = r.serviceHandler.HandleDelete(svcName); err != nil {
 			return reconcile.Result{}, err
 		}
@@ -67,12 +80,24 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 	}
 
 	if err != nil {
+		logger.Info("failed to fetch service", zap.Error(err))
+
 		return reconcile.Result{}, fmt.Errorf("could not fetch Service: %w", err)
 	}
 
+	logger.Debug("service fetched",
+		zap.String("resource-version", svc.ResourceVersion),
+		zap.Int("annotation-count", len(svc.GetAnnotations())),
+		zap.Int("port-count", len(svc.Spec.Ports)),
+	)
+
 	if err = r.serviceHandler.Handle(svc); err != nil {
+		logger.Info("failed to handle service", zap.Error(err))
+
 		return reconcile.Result{}, fmt.Errorf("failed to handle Service: %w", err)
 	}
+
+	logger.Debug("service handled")
 
 	return reconcile.Result{}, nil
 }
