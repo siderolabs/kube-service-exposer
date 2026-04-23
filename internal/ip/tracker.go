@@ -102,8 +102,6 @@ func (t *Tracker) handleChanges(ctx context.Context) error {
 
 	ipSet, err := t.ipSetRefresher.Refresh()
 	if err != nil {
-		t.logger.Info("failed to refresh IP set", zap.Error(err))
-
 		return fmt.Errorf("failed to refresh IP set: %w", err)
 	}
 
@@ -115,15 +113,11 @@ func (t *Tracker) handleChanges(ctx context.Context) error {
 		return nil
 	}
 
-	t.ipSet = ipSet
-
 	t.logger.Info("detected changes on IP set, refresh mappings", zap.Int("ip-count", len(ipSet)))
 
 	svcList := &corev1.ServiceList{}
 
 	if err = t.clientProvider.GetClient().List(ctx, svcList); err != nil {
-		t.logger.Info("failed to list services for IP refresh", zap.Error(err))
-
 		return fmt.Errorf("failed to list Services: %w", err)
 	}
 
@@ -131,15 +125,22 @@ func (t *Tracker) handleChanges(ctx context.Context) error {
 
 	var errs error
 
-	for _, svc := range svcList.Items {
-		t.logger.Debug("refreshing service mapping", zap.String("svc-name", svc.Name+"."+svc.Namespace))
+	for i := range svcList.Items {
+		svc := &svcList.Items[i]
+		svcName := svc.Name + "." + svc.Namespace
 
-		if err = t.serviceHandler.Handle(&svc); err != nil {
-			t.logger.Info("failed to refresh service mapping", zap.String("svc-name", svc.Name+"."+svc.Namespace), zap.Error(err))
+		t.logger.Debug("refreshing service mapping", zap.String("svc-name", svcName))
 
-			errs = multierror.Append(errs, fmt.Errorf("failed to handle Service %s/%s: %w", svc.Namespace, svc.Name, err))
+		if err = t.serviceHandler.Handle(svc); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf("failed to handle Service %s: %w", svcName, err))
 		}
 	}
 
-	return errs
+	if errs != nil {
+		return errs
+	}
+
+	t.ipSet = ipSet
+
+	return nil
 }

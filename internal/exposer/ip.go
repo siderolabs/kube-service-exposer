@@ -68,8 +68,6 @@ func (e *FilteringIPSetProvider) Get() (map[string]struct{}, error) {
 
 	allIPsSet, err := e.ipCache.Get()
 	if err != nil {
-		e.logger.Info("failed to get all IP addresses", zap.Error(err))
-
 		return nil, fmt.Errorf("failed to get all IP addresses: %w", err)
 	}
 
@@ -79,7 +77,9 @@ func (e *FilteringIPSetProvider) Get() (map[string]struct{}, error) {
 		e.logger.Info("failed to parse IP address", zap.String("ip", ip), zap.Error(err))
 	})
 
-	e.logger.Debug("filtered host IP set", zap.Int("ip-count", len(filteredIPs)), zap.Strings("ips", maps.Keys(filteredIPs)))
+	if ce := e.logger.Check(zap.DebugLevel, "filtered host IP set"); ce != nil {
+		ce.Write(zap.Int("ip-count", len(filteredIPs)), zap.Strings("ips", maps.Keys(filteredIPs)))
+	}
 
 	return filteredIPs, nil
 }

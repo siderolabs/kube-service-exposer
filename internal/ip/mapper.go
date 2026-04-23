@@ -86,30 +86,28 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 
 	hostIPSet, err := m.ipSetProvider.Get()
 	if err != nil {
-		logger.Info("failed to get matching IP set", zap.Error(err))
-
 		return fmt.Errorf("failed to get matching IP set: %w", err)
 	}
 
-	logger.Debug("resolved host IP set", zap.Int("ip-count", len(hostIPSet)), zap.Strings("ips", maps.Keys(hostIPSet)))
+	if ce := logger.Check(zap.DebugLevel, "resolved host IP set"); ce != nil {
+		ce.Write(zap.Int("ip-count", len(hostIPSet)), zap.Strings("ips", maps.Keys(hostIPSet)))
+	}
 
 	existingMappingForHostPort := m.hostPortToMapping[hostPort]
 	if existingMappingForHostPort != nil && existingMappingForHostPort.svcName != svcName {
-		logger.Warn("host port conflict: already registered to another service",
-			zap.String("conflicting-svc", existingMappingForHostPort.svcName),
-		)
-
 		return fmt.Errorf("host port %d is already registered to another service: %s", hostPort, existingMappingForHostPort.svcName)
 	}
 
 	existingMappingForService := m.svcNameToPortMapping[svcName]
 	if existingMappingForService != nil {
-		logger.Debug("existing mapping found",
-			zap.Int("existing-host-port", existingMappingForService.hostPort),
-			zap.Int("existing-svc-port", existingMappingForService.svcPort),
-			zap.Int("existing-ip-count", len(existingMappingForService.hostIPSet)),
-			zap.Strings("existing-ips", maps.Keys(existingMappingForService.hostIPSet)),
-		)
+		if ce := logger.Check(zap.DebugLevel, "existing mapping found"); ce != nil {
+			ce.Write(
+				zap.Int("existing-host-port", existingMappingForService.hostPort),
+				zap.Int("existing-svc-port", existingMappingForService.svcPort),
+				zap.Int("existing-ip-count", len(existingMappingForService.hostIPSet)),
+				zap.Strings("existing-ips", maps.Keys(existingMappingForService.hostIPSet)),
+			)
+		}
 
 		if existingMappingForService.hostPort == hostPort &&
 			existingMappingForService.svcPort == svcPort &&
@@ -135,8 +133,6 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 
 	lb, err := m.loadBalancerController.New(lbLogger)
 	if err != nil {
-		logger.Info("failed to create loadbalancer", zap.Error(err))
-
 		return fmt.Errorf("failed to create loadbalancer: %w", err)
 	}
 
@@ -150,17 +146,13 @@ func (m *Mapper) Add(svcName string, hostPort, svcPort int) error {
 			slices.Values([]string{upstreamAddr}),
 			upstream.WithHealthcheckTimeout(time.Second),
 		); err != nil {
-			logger.Info("failed to add loadbalancer route", zap.String("listen-addr", listenAddr), zap.String("upstream-addr", upstreamAddr), zap.Error(err))
-
-			return fmt.Errorf("failed to add route to loadbalancer: %w", err)
+			return fmt.Errorf("failed to add loadbalancer route (listen=%s upstream=%s): %w", listenAddr, upstreamAddr, err)
 		}
 	}
 
 	logger.Debug("start loadbalancer")
 
 	if err = lb.Start(); err != nil {
-		logger.Info("failed to start loadbalancer, attempt to stop it")
-
 		// we still need to close the loadbalancer, so that the health checks goroutines get terminated
 		if closeErr := lb.Close(); closeErr != nil {
 			return errors.Join(fmt.Errorf("failed to start loadbalancer: %w", err), fmt.Errorf("failed to close loadbalancer: %w", closeErr))
@@ -199,12 +191,14 @@ func (m *Mapper) removeNoLock(svcName string) {
 		return
 	}
 
-	logger.Debug("mapping found, removing",
-		zap.Int("host-port", mapping.hostPort),
-		zap.Int("svc-port", mapping.svcPort),
-		zap.Int("ip-count", len(mapping.hostIPSet)),
-		zap.Strings("ips", maps.Keys(mapping.hostIPSet)),
-	)
+	if ce := logger.Check(zap.DebugLevel, "mapping found, removing"); ce != nil {
+		ce.Write(
+			zap.Int("host-port", mapping.hostPort),
+			zap.Int("svc-port", mapping.svcPort),
+			zap.Int("ip-count", len(mapping.hostIPSet)),
+			zap.Strings("ips", maps.Keys(mapping.hostIPSet)),
+		)
+	}
 
 	if mapping.lb != nil {
 		logger.Debug("close loadbalancer")

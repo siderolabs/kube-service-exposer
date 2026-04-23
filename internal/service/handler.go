@@ -104,8 +104,6 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 
 	hostPort, err := strconv.Atoi(hostPortStr)
 	if err != nil {
-		logger.Info("failed to parse host port annotation, leave existing mapping unchanged", zap.String("value", hostPortStr), zap.Error(err))
-
 		return fmt.Errorf("invalid host port %q: %w", hostPortStr, err)
 	}
 
@@ -125,7 +123,7 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 		return port.Protocol == corev1.ProtocolTCP
 	})
 
-	logger.Debug("filtered service ports", zap.Int("tcp-port-count", len(svcTCPPorts)), zap.Any("ports", svc.Spec.Ports))
+	logger.Debug("filtered service ports", zap.Int("tcp-port-count", len(svcTCPPorts)), zap.Any("ports", svcTCPPorts))
 
 	if len(svcTCPPorts) == 0 {
 		logger.Debug("no TCP ports on Service, remove mapping if it exists")
@@ -144,8 +142,6 @@ func (s *Handler) Handle(svc *corev1.Service) error {
 	logger.Debug("register service mapping", zap.Int("host-port", hostPort), zap.Int("svc-port", svcPort))
 
 	if err = s.ipMapper.Add(svcName, hostPort, svcPort); err != nil {
-		logger.Info("failed to register service mapping", zap.Int("host-port", hostPort), zap.Int("svc-port", svcPort), zap.Error(err))
-
 		return fmt.Errorf("failed to register host port: %w", err)
 	}
 

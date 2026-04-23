@@ -49,6 +49,7 @@ func (m *mockClientProvider) GetClient() client.Client {
 
 type mockServiceHandler struct {
 	handles []*corev1.Service
+	errs    []error
 
 	lock sync.Mutex
 }
@@ -59,6 +60,13 @@ func (m *mockServiceHandler) Handle(svc *corev1.Service) error {
 
 	m.handles = append(m.handles, svc)
 
+	if len(m.errs) > 0 {
+		err := m.errs[0]
+		m.errs = m.errs[1:]
+
+		return err
+	}
+
 	return nil
 }
 
@@ -67,6 +75,13 @@ func (m *mockServiceHandler) Handles() []*corev1.Service {
 	defer m.lock.Unlock()
 
 	return m.handles
+}
+
+func (m *mockServiceHandler) SetErrors(errs ...error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
+
+	m.errs = errs
 }
 
 func TestTrackerCreate(t *testing.T) {
@@ -128,6 +143,8 @@ func TestTracker(t *testing.T) {
 		return tracker.Run(ctx)
 	})
 
+	sleepWithContext(ctx, 100*time.Millisecond)
+
 	mockClock.Add(3 * time.Second)
 
 	// no handles expected, no changes
@@ -165,6 +182,76 @@ func TestTracker(t *testing.T) {
 
 	// no handles expected, no changes
 	assert.Len(t, serviceHandler.Handles(), 2)
+
+	cancel()
+
+	require.NoError(t, eg.Wait())
+}
+
+func TestTrackerRetriesRefreshAfterServiceHandlerFailure(t *testing.T) {
+	t.Parallel()
+
+	logger := zaptest.NewLogger(t)
+
+	mockClock := clock.NewMock()
+
+	refresher := &mockSetRefresher{}
+
+	clientProvider := &mockClientProvider{
+		objects: []client.Object{
+			&corev1.Service{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test",
+					Namespace: "testns",
+				},
+			},
+		},
+	}
+
+	serviceHandler := &mockServiceHandler{}
+	serviceHandler.SetErrors(fmt.Errorf("handler failed"))
+
+	tracker, err := ip.NewTracker(refresher, clientProvider, serviceHandler, 2*time.Second, mockClock, logger)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	eg, ctx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		return tracker.Run(ctx)
+	})
+
+	sleepWithContext(ctx, 100*time.Millisecond)
+
+	refresher.lock.Lock()
+	refresher.ipSet = map[string]struct{}{
+		"192.168.2.42": {},
+	}
+	refresher.lock.Unlock()
+
+	mockClock.Add(2 * time.Second)
+
+	err = retry.Constant(3*time.Second, retry.WithUnits(50*time.Millisecond)).Retry(func() error {
+		if length := len(serviceHandler.Handles()); length < 1 {
+			return retry.ExpectedError(fmt.Errorf("not enough handles: %d", length))
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
+
+	mockClock.Add(2 * time.Second)
+
+	err = retry.Constant(3*time.Second, retry.WithUnits(50*time.Millisecond)).Retry(func() error {
+		if length := len(serviceHandler.Handles()); length < 2 {
+			return retry.ExpectedError(fmt.Errorf("not enough handles: %d", length))
+		}
+
+		return nil
+	})
+	require.NoError(t, err)
 
 	cancel()
 
