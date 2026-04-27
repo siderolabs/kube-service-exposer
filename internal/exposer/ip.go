@@ -14,9 +14,13 @@ import (
 	"github.com/siderolabs/kube-service-exposer/internal/cidrs"
 )
 
-// IPSetProvider in an interface for getting a set of IP addresses.
+// IPSetProvider is an interface for getting a set of IP addresses.
+//
+// Refresh invalidates any cached value and returns a freshly fetched set; Get returns
+// the cached value (or fetches it on first call).
 type IPSetProvider interface {
 	Get() (map[string]struct{}, error)
+	Refresh() (map[string]struct{}, error)
 }
 
 // FilteringIPSetProvider is an IPSetProvider that filters the underlying IPSetProvider by a list of CIDRs.
@@ -56,17 +60,27 @@ func NewFilteringIPSetProvider(bindCIDRs []string, underlyingProvider IPSetProvi
 	}, nil
 }
 
-// Get implements the ipmapper.IPSetProvider interface.
+// Get implements the IPSetProvider interface.
 //
 // It returns the set of host IP addresses to bind the load balancer to.
 func (e *FilteringIPSetProvider) Get() (map[string]struct{}, error) {
+	return e.filter(e.ipCache.Get)
+}
+
+// Refresh implements the IPSetProvider interface. It busts the underlying cache and
+// returns a freshly fetched, filtered IP set.
+func (e *FilteringIPSetProvider) Refresh() (map[string]struct{}, error) {
+	return e.filter(e.ipCache.Refresh)
+}
+
+func (e *FilteringIPSetProvider) filter(fetch func() (map[string]struct{}, error)) (map[string]struct{}, error) {
 	if len(e.bindCIDRPrefixes) == 0 {
 		e.logger.Debug("no bind CIDRs configured, use wildcard IP")
 
 		return map[string]struct{}{"0.0.0.0": {}}, nil
 	}
 
-	allIPsSet, err := e.ipCache.Get()
+	allIPsSet, err := fetch()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get all IP addresses: %w", err)
 	}

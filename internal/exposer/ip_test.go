@@ -25,6 +25,10 @@ func (m *mockProvider) Get() (map[string]struct{}, error) {
 	return xslices.ToSet(m.ips), m.err
 }
 
+func (m *mockProvider) Refresh() (map[string]struct{}, error) {
+	return m.Get()
+}
+
 func TestFilteringIPSetProviderCreate(t *testing.T) {
 	t.Parallel()
 

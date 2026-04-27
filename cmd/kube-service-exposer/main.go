@@ -32,6 +32,7 @@ var rootCmdArgs struct {
 	pprofBindAddr            string
 	bindCIDRs                []string
 	disallowedHostPortRanges []string
+	ipRefreshPeriod          time.Duration
 
 	debug bool
 }
@@ -65,7 +66,12 @@ var rootCmd = &cobra.Command{
 
 		controllerruntimelog.SetLogger(zapr.NewLogger(logger.Named("runtime")))
 
-		exposer, err := exposer.New(rootCmdArgs.annotationKey, rootCmdArgs.bindCIDRs, rootCmdArgs.disallowedHostPortRanges, logger.Named("exposer"))
+		exposer, err := exposer.New(exposer.Options{
+			AnnotationKey:            rootCmdArgs.annotationKey,
+			BindCIDRs:                rootCmdArgs.bindCIDRs,
+			DisallowedHostPortRanges: rootCmdArgs.disallowedHostPortRanges,
+			IPRefreshPeriod:          rootCmdArgs.ipRefreshPeriod,
+		}, logger.Named("exposer"))
 		if err != nil {
 			return err
 		}
@@ -89,7 +95,7 @@ var rootCmd = &cobra.Command{
 func main() {
 	ctx := signals.SetupSignalHandler()
 
-	if err := rootCmd.ExecuteContext(ctx); err != nil {
+	if err := rootCmd.ExecuteContext(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		log.Fatalf("failed to run: %v", err)
 	}
 }
@@ -138,12 +144,16 @@ func runPprofServer(ctx context.Context, logger *zap.Logger) error {
 
 func init() {
 	rootCmd.Flags().StringVarP(&rootCmdArgs.annotationKey, "annotation-key", "a", version.Name+".sidero.dev/port",
-		"the annotation key to be looked for on the services to determine which port to expose ot from.")
+		"The annotation key to be looked for on the services to determine which port to expose it from. "+
+			"The value is a comma-separated list of <host-port> or <host-port>:<service-port-name-or-number>.")
+
 	rootCmd.Flags().StringVar(&rootCmdArgs.pprofBindAddr, "pprof-bind-addr", "",
-		"the address to bind the pprof server to. Disabled when empty.")
+		"The address to bind the pprof server to. Disabled when empty.")
 	rootCmd.Flags().StringSliceVarP(&rootCmdArgs.bindCIDRs, "bind-cidrs", "b", nil,
-		"the CIDRs to match the host IPs with. Only the ports on the IPs that match these CIDRs will be listened. When empty, all IPs will be listened.")
+		"The CIDRs to match the host IPs with. Only the ports on the IPs that match these CIDRs will be listened. When empty, all IPs will be listened.")
 	rootCmd.Flags().StringSliceVar(&rootCmdArgs.disallowedHostPortRanges, "disallowed-host-port-ranges", nil,
-		"the port ranges on the host that are not allowed to be used. When a disallowed host port is attempted to be exposed, it will be skipped and a warning will be logged.")
+		"The port ranges on the host that are not allowed to be used. When a disallowed host port is attempted to be exposed, it will be skipped and a warning will be logged.")
+	rootCmd.Flags().DurationVar(&rootCmdArgs.ipRefreshPeriod, "ip-refresh-period", 30*time.Second,
+		"How often to re-scan host IPs and reconcile mappings against them. Only takes effect when --bind-cidrs is set.")
 	rootCmd.Flags().BoolVar(&rootCmdArgs.debug, "debug", false, "enable debug logs.")
 }
