@@ -1,3 +1,39 @@
+## [kube-service-exposer 0.3.0](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.3.0) (2026-05-01)
+
+Welcome to the v0.3.0 release of kube-service-exposer!
+
+
+
+Please try out the release binaries and report any issues at
+https://github.com/siderolabs/kube-service-exposer/issues.
+
+### Multiple Port Mappings
+
+The annotation now accepts a comma-separated list of entries, allowing a single Service to request multiple host port mappings. Each entry is either a bare host port or a `host-port:service-port` pair, where the service port can be a number or a name.
+
+For example: `kube-service-exposer.sidero.dev/port: "30080,30443:8080,30444:https"`.
+
+The bare host port form still works, so existing annotations are unaffected.
+
+
+### Contributors
+
+* Utku Ozdemir
+
+### Changes
+<details><summary>1 commit</summary>
+<p>
+
+* [`ba05855`](https://github.com/siderolabs/kube-service-exposer/commit/ba0585591f6ab6955483175f24516d8a6aa5d833) feat: allow specifying multiple host ports and selecting service port
+</p>
+</details>
+
+### Dependency Changes
+
+This release has no dependency changes
+
+Previous release can be found at [v0.2.1](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.2.1)
+
 ## [kube-service-exposer 0.2.1](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.2.1) (2026-04-23)
 
 Welcome to the v0.2.1 release of kube-service-exposer!

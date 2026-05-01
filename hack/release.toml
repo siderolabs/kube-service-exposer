@@ -5,5 +5,14 @@ project_name = "kube-service-exposer"
 github_repo = "siderolabs/kube-service-exposer"
 match_deps = "^github.com/(siderolabs/[a-zA-Z0-9-]+)$"
 
-previous = "v0.2.0"
+previous = "v0.2.1"
 
+[notes.multiple-port-mappings]
+title = "Multiple Port Mappings"
+description = """\
+The annotation now accepts a comma-separated list of entries, allowing a single Service to request multiple host port mappings. Each entry is either a bare host port or a `host-port:service-port` pair, where the service port can be a number or a name.
+
+For example: `kube-service-exposer.sidero.dev/port: "30080,30443:8080,30444:https"`.
+
+The bare host port form still works, so existing annotations are unaffected.
+"""
