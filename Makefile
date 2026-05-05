@@ -1,6 +1,6 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED, PLEASE DO NOT EDIT.
 #
-# Generated on 2026-04-22T10:19:03Z by kres 41939c6.
+# Generated on 2026-05-05T12:52:25Z by kres 1762ab2.
 
 # common variables
 
@@ -21,15 +21,15 @@ USERNAME ?= siderolabs
 REGISTRY_AND_USERNAME ?= $(REGISTRY)/$(USERNAME)
 PROTOBUF_GO_VERSION ?= 1.36.11
 GRPC_GO_VERSION ?= 1.6.1
-GRPC_GATEWAY_VERSION ?= 2.28.0
+GRPC_GATEWAY_VERSION ?= 2.29.0
 VTPROTOBUF_VERSION ?= 0.6.0
-GOIMPORTS_VERSION ?= 0.43.0
+GOIMPORTS_VERSION ?= 0.44.0
 GOMOCK_VERSION ?= 0.6.0
 DEEPCOPY_VERSION ?= v0.5.8
 GOLANGCILINT_VERSION ?= v2.11.4
 GOFUMPT_VERSION ?= v0.9.2
 GO_VERSION ?= 1.26.2
-DIS_VULNCHECK_VERSION ?= v0.0.0-20260408104044-a7a2dc044240
+DIS_VULNCHECK_VERSION ?= v0.0.0-20260409114749-05440f84fe69
 GO_BUILDFLAGS ?=
 GO_BUILDTAGS ?= ,
 GO_LDFLAGS ?=
@@ -80,6 +80,10 @@ COMMON_ARGS += --build-arg=GOFUMPT_VERSION="$(GOFUMPT_VERSION)"
 COMMON_ARGS += --build-arg=DIS_VULNCHECK_VERSION="$(DIS_VULNCHECK_VERSION)"
 COMMON_ARGS += --build-arg=TESTPKGS="$(TESTPKGS)"
 TOOLCHAIN ?= docker.io/golang:1.26-alpine
+
+# extra variables
+
+IMAGE_SIGNER_IMAGE ?= ghcr.io/siderolabs/image-signer:v0.3.2
 
 # help menu
 
@@ -251,6 +255,16 @@ lint-fmt: lint-golangci-lint-fmt  ## Run all linter formatters and fix up the so
 .PHONY: image-kube-service-exposer
 image-kube-service-exposer:  ## Builds image for kube-service-exposer.
 	@$(MAKE) registry-$@ IMAGE_NAME="kube-service-exposer"
+
+.PHONY: sign-images
+sign-images:
+	@test -n "$$GITHUB_TOKEN" || { echo "GITHUB_TOKEN must be set"; exit 1; }
+	@TMP=$$(mktemp -d) && trap 'rm -rf $$TMP' EXIT && \
+	  printf '{"auths":{"ghcr.io":{"username":"x","password":"%s"}}}' "$$GITHUB_TOKEN" > $$TMP/config.json && \
+	  docker run --rm -p 127.0.0.1:8585:8585 \
+	    -v $$TMP:/dc:ro -e DOCKER_CONFIG=/dc \
+	    $(IMAGE_SIGNER_IMAGE) sign --timeout=15m \
+	    $(REGISTRY_AND_USERNAME)/kube-service-exposer:$(IMAGE_TAG)
 
 .PHONY: rekres
 rekres:
