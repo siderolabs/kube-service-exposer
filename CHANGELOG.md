@@ -1,3 +1,52 @@
+## [kube-service-exposer 0.4.0](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.4.0) (2026-07-15)
+
+Welcome to the v0.4.0 release of kube-service-exposer!
+
+
+
+Please try out the release binaries and report any issues at
+https://github.com/siderolabs/kube-service-exposer/issues.
+
+### Configurable Metrics Bind Address
+
+The metrics server is now disabled by default and can be enabled by setting the new `--metrics-bind-addr` flag to the desired listen address.
+
+Previously it was always enabled on `:8080` on all interfaces.
+
+
+### Contributors
+
+* Utku Ozdemir
+* Mark Glants
+
+### Changes
+<details><summary>2 commits</summary>
+<p>
+
+* [`8ee1636`](https://github.com/siderolabs/kube-service-exposer/commit/8ee163679e2d4ea480522a98768ca212983d1232) feat: make the metrics bind address configurable
+* [`b13b3a2`](https://github.com/siderolabs/kube-service-exposer/commit/b13b3a29f7c7e61847f51dfc32e6d12d4cc39e08) feat: support signing released images
+</p>
+</details>
+
+### Changes from siderolabs/gen
+<details><summary>1 commit</summary>
+<p>
+
+* [`c526410`](https://github.com/siderolabs/gen/commit/c526410f8c26b75ab386877036d4855098f9c429) fix: skip unknown-key check for types with custom YAML unmarshaler
+</p>
+</details>
+
+### Dependency Changes
+
+* **github.com/siderolabs/gen**       v0.8.6 -> v0.8.7
+* **go.uber.org/zap**                 v1.27.1 -> v1.28.0
+* **golang.org/x/sync**               v0.20.0 -> v0.22.0
+* **k8s.io/api**                      v0.35.4 -> v0.36.2
+* **k8s.io/apimachinery**             v0.35.4 -> v0.36.2
+* **sigs.k8s.io/controller-runtime**  v0.23.3 -> v0.24.1
+
+Previous release can be found at [v0.3.0](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.3.0)
+
 ## [kube-service-exposer 0.3.0](https://github.com/siderolabs/kube-service-exposer/releases/tag/v0.3.0) (2026-05-01)
 
 Welcome to the v0.3.0 release of kube-service-exposer!

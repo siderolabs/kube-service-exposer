@@ -5,14 +5,12 @@ project_name = "kube-service-exposer"
 github_repo = "siderolabs/kube-service-exposer"
 match_deps = "^github.com/(siderolabs/[a-zA-Z0-9-]+)$"
 
-previous = "v0.2.1"
+previous = "v0.3.0"
 
-[notes.multiple-port-mappings]
-title = "Multiple Port Mappings"
+[notes.metrics-bind-address]
+title = "Configurable Metrics Bind Address"
 description = """\
-The annotation now accepts a comma-separated list of entries, allowing a single Service to request multiple host port mappings. Each entry is either a bare host port or a `host-port:service-port` pair, where the service port can be a number or a name.
+The metrics server is now disabled by default and can be enabled by setting the new `--metrics-bind-addr` flag to the desired listen address.
 
-For example: `kube-service-exposer.sidero.dev/port: "30080,30443:8080,30444:https"`.
-
-The bare host port form still works, so existing annotations are unaffected.
+Previously it was always enabled on `:8080` on all interfaces.
 """
