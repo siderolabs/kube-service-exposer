@@ -19,6 +19,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
@@ -31,6 +32,7 @@ import (
 // Options configures the Exposer.
 type Options struct {
 	AnnotationKey            string
+	MetricsBindAddr          string
 	BindCIDRs                []string
 	DisallowedHostPortRanges []string
 	IPRefreshPeriod          time.Duration
@@ -69,7 +71,16 @@ func New(opts Options, logger *zap.Logger) (*Exposer, error) {
 		return nil, fmt.Errorf("failed to get config: %w", err)
 	}
 
-	mgr, err := manager.New(conf, manager.Options{})
+	metricsBindAddr := opts.MetricsBindAddr
+	if metricsBindAddr == "" {
+		metricsBindAddr = "0" // "0" disables the metrics server, the empty value would enable it on the default port
+	}
+
+	mgr, err := manager.New(conf, manager.Options{
+		Metrics: metricsserver.Options{
+			BindAddress: metricsBindAddr,
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create manager: %w", err)
 	}

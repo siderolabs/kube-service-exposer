@@ -29,6 +29,7 @@ import (
 
 var rootCmdArgs struct {
 	annotationKey            string
+	metricsBindAddr          string
 	pprofBindAddr            string
 	bindCIDRs                []string
 	disallowedHostPortRanges []string
@@ -68,6 +69,7 @@ var rootCmd = &cobra.Command{
 
 		exposer, err := exposer.New(exposer.Options{
 			AnnotationKey:            rootCmdArgs.annotationKey,
+			MetricsBindAddr:          rootCmdArgs.metricsBindAddr,
 			BindCIDRs:                rootCmdArgs.bindCIDRs,
 			DisallowedHostPortRanges: rootCmdArgs.disallowedHostPortRanges,
 			IPRefreshPeriod:          rootCmdArgs.ipRefreshPeriod,
@@ -147,6 +149,8 @@ func init() {
 		"The annotation key to be looked for on the services to determine which port to expose it from. "+
 			"The value is a comma-separated list of <host-port> or <host-port>:<service-port-name-or-number>.")
 
+	rootCmd.Flags().StringVar(&rootCmdArgs.metricsBindAddr, "metrics-bind-addr", "",
+		"The address to bind the metrics server to. Disabled when empty.")
 	rootCmd.Flags().StringVar(&rootCmdArgs.pprofBindAddr, "pprof-bind-addr", "",
 		"The address to bind the pprof server to. Disabled when empty.")
 	rootCmd.Flags().StringSliceVarP(&rootCmdArgs.bindCIDRs, "bind-cidrs", "b", nil,

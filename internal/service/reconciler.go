@@ -107,7 +107,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, request reconcile.Request) (
 		return reconcile.Result{}, fmt.Errorf("could not fetch Service: %w", err)
 	}
 
-	logger.Debug("service fetched",
+	logger.Debug(
+		"service fetched",
 		zap.String("type", string(svc.Spec.Type)),
 		zap.String("resource-version", svc.ResourceVersion),
 		zap.Int("annotation-count", len(svc.GetAnnotations())),
@@ -144,7 +145,8 @@ func (r *Reconciler) buildDesiredMappings(svc *corev1.Service, logger *zap.Logge
 		}
 
 		if firstSeen, dup := seen[entry.hostPort]; dup {
-			entryLogger.Warn("duplicate host port in annotation, skipping",
+			entryLogger.Warn(
+				"duplicate host port in annotation, skipping",
 				zap.Int("host-port", entry.hostPort),
 				zap.String("first-mapping", firstSeen),
 			)
@@ -153,7 +155,8 @@ func (r *Reconciler) buildDesiredMappings(svc *corev1.Service, logger *zap.Logge
 		}
 
 		if disallowed := r.firstDisallowedRange(entry.hostPort); disallowed != nil {
-			entryLogger.Warn("disallowed host port, skipping",
+			entryLogger.Warn(
+				"disallowed host port, skipping",
 				zap.Int("host-port", entry.hostPort),
 				zap.String("disallowed-port-range", disallowed.String()),
 			)

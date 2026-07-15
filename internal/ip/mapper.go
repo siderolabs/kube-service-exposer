@@ -239,7 +239,8 @@ func (m *Mapper) add(serviceKey types.NamespacedName, mapping Mapping, hostIPSet
 
 		pm.lb = lb
 	} else {
-		logger.Info("no host IPs match bind CIDRs, mapping is pending until IPs become available",
+		logger.Info(
+			"no host IPs match bind CIDRs, mapping is pending until IPs become available",
 			zap.Stringer("mapping", mapping),
 		)
 	}
@@ -255,7 +256,8 @@ func (m *Mapper) add(serviceKey types.NamespacedName, mapping Mapping, hostIPSet
 
 	mappings[port] = pm
 
-	logger.Info("added mapping",
+	logger.Info(
+		"added mapping",
 		zap.Stringer("mapping", mapping),
 		zap.Strings("ips", slices.Sorted(maps.Keys(hostIPSet))),
 	)
@@ -280,7 +282,8 @@ func (m *Mapper) startLoadBalancer(serviceKey types.NamespacedName, mapping Mapp
 
 		logger.Debug("add loadbalancer route", zap.String("listen-addr", listenAddr), zap.String("upstream-addr", upstreamAddr))
 
-		if err = lb.AddRoute(listenAddr,
+		if err = lb.AddRoute(
+			listenAddr,
 			slices.Values([]string{upstreamAddr}),
 			upstream.WithHealthcheckTimeout(time.Second),
 		); err != nil {
